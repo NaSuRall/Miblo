@@ -4,7 +4,7 @@ use crate::generator;
 
 #[derive(Subcommand)]
 enum Commands {
-    CreateApp { name: String },
+    Init { name: String },
     ListeApp {},
 }
 
@@ -19,10 +19,11 @@ pub fn lunch() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::CreateApp { name } => {
-            println!("Création de l'API {}", name);
-            generator::generator(name);
+        Commands::Init { name } => {
+            println!("Lancement du generateur");
+            let _ = generator::generator(name);
         }
+
         Commands::ListeApp {} => {
             println!("Voici toutes vos applications : ");
         }
