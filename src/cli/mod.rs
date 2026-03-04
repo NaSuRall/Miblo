@@ -1,10 +1,12 @@
 use clap::{Parser, Subcommand};
 
 use crate::generator;
+use crate::runtime;
 
 #[derive(Subcommand)]
 enum Commands {
     Init { name: String },
+    Run { name: String },
     ListeApp {},
 }
 
@@ -22,6 +24,10 @@ pub fn lunch() {
         Commands::Init { name } => {
             println!("Lancement du generateur");
             let _ = generator::generator(name);
+        }
+        Commands::Run { name } => {
+            println!("Lancement du serveur : ");
+            let _ = runtime::runtime(name);
         }
 
         Commands::ListeApp {} => {
