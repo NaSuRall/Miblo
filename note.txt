@@ -16,3 +16,14 @@ Pour l'instant
     
  Miblo run 
     - va dans le /rust et fait cargo run pour lancer le serv Axum minimal
+
+
+
+
+
+A Faire : 
+
+   - Automatiser le menu pour ajout d'un language autre que Rust pour crée l'api dans generator
+   - Faire retourner les valeur de parser en Json
+   - configurer les Err dans le parser 
+   - Sécurisé les fonctions
