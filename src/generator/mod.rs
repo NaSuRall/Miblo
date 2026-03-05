@@ -2,13 +2,28 @@ use fs_extra::dir::{CopyOptions, copy as copy_dir};
 use fs_extra::file::copy as copy_file;
 use std::env;
 use std::fs;
+use std::io;
 use std::path::PathBuf;
 
-pub fn generator(name: String) -> Result<(), Box<dyn std::error::Error>> {
-    let current_dir = env::current_dir()?;
-    let template_path = PathBuf::from("src/templates/rust_api");
-    let project_path = current_dir.join(&name);
+pub fn generator(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Quel langagne souhaitez vous pour votre api ?");
 
+    println!("1) RUST");
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let choice: usize = input.trim().parse().unwrap();
+
+    let template_path: PathBuf = match choice {
+        1 => PathBuf::from("src/templates/rust_api"),
+        _ => {
+            println!("Choix invalide");
+            return Ok(());
+        }
+    };
+
+    let current_dir = env::current_dir()?;
+    let project_path = current_dir.join(&name);
     fs::create_dir_all(&project_path)?;
 
     let mut dir_options = CopyOptions::new();
@@ -25,8 +40,6 @@ pub fn generator(name: String) -> Result<(), Box<dyn std::error::Error>> {
             copy_file(&path, &dest_path, &fs_extra::file::CopyOptions::new())?;
         }
     }
-
-    println!("Ajout de l'api : {} : OK", name);
 
     Ok(())
 }

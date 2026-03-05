@@ -1,0 +1,18 @@
+Parser : 
+ - il faut le faire retourner les valeur en Json
+ - Avec les données du parser il faut crée les struct rust dans l'api ainsi que les routes personalliser
+ - Faire un watcher qui va ecouter les changement de route.yaml uniquement quand le serveur tourne.
+
+
+Pour l'instant 
+
+ Miblo init rust 
+    - Crée l'api minimal /rust
+                            route.yaml  
+                            /src
+                            cargo.toml
+                            etc...
+    - Join le dossier /rust et lis le fichier route.yaml et retourne les valeurs
+    
+ Miblo run 
+    - va dans le /rust et fait cargo run pour lancer le serv Axum minimal

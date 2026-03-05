@@ -1,13 +1,12 @@
 # [ ROUTES ]
 route:
-  method: get 
-  path: "/user/bonjour"
-  name: getUser
+  - method: get 
+  - path: "/user/bonjour"
+  - name: getUser
 
-route:
-  method: post 
-  path: "/users/create"
-  name: "createUser"
+  - method: post 
+  - path: "/users/create"
+  - name: "createUser"
   
 # [ DATABASES ]
 DB_CONNECTION: mysql

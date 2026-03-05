@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
 use crate::generator;
+use crate::parser;
 use crate::runtime;
 
 #[derive(Subcommand)]
@@ -23,7 +24,9 @@ pub fn lunch() {
     match cli.command {
         Commands::Init { name } => {
             println!("Lancement du generateur");
-            let _ = generator::generator(name);
+            let _ = generator::generator(&name);
+            let get_routes = parser::reader_route(&name);
+            println!("Voici vos routes : {:?}", get_routes);
         }
         Commands::Run { name } => {
             println!("Lancement du serveur : ");
