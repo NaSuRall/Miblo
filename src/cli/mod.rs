@@ -25,8 +25,8 @@ pub fn lunch() {
         Commands::Init { name } => {
             println!("Lancement du generateur");
             let _ = generator::generator(&name);
-            let get_routes = parser::reader_route(&name);
-            println!("Voici vos routes : {:?}", get_routes);
+            let json_route_yaml = parser::reader_route(&name);
+            println!("Voici vos routes : {:#?}", json_route_yaml);
         }
         Commands::Run { name } => {
             println!("Lancement du serveur : ");

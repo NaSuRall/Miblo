@@ -1,9 +1,10 @@
+use serde_json;
 use serde_yaml;
 use std::env;
 use std::path::PathBuf;
 
 // faire retourner en JSON les valleur de ROUTE.yaml
-pub fn reader_route(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn reader_route(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     let current_dir: PathBuf = env::current_dir()?;
 
     // Aller dans l'api
@@ -15,9 +16,9 @@ pub fn reader_route(name: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Récuperer les données
     let data: serde_yaml::Value = serde_yaml::from_reader(reader)?;
-    println!("Data route.yaml : {:#?} ", data);
-    // Retourner en Json 
+    // Retourner en Json
 
     // etc...
-    Ok(())
+    let json = serde_json::to_string(&data)?;
+    Ok(json)
 }

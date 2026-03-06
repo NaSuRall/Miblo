@@ -27,3 +27,7 @@ A Faire :
    - Faire retourner les valeur de parser en Json
    - configurer les Err dans le parser 
    - Sécurisé les fonctions
+   - Création des ( Routes struc bdd ) en fonction des données de ROUTE.yaml
+   - Ajout d'un system d'auth uniquement sur abonement 
+   - Création du site web pour crée un compte avec abonement 
+   - ajoute du watcher de route.yaml quand le programme est lancer avec miblo run rust
