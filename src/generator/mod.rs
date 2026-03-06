@@ -1,21 +1,21 @@
-use fs_extra::dir::{CopyOptions, copy as copy_dir};
-use fs_extra::file::copy as copy_file;
+use include_dir::{include_dir, Dir};
 use std::env;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::Path;
+
+static TEMPLATES: Dir = include_dir!("$CARGO_MANIFEST_DIR/src/templates");
 
 pub fn generator(name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Quel langagne souhaitez vous pour votre api ?");
-
+    println!("Quel langage souhaitez vous pour votre api ?");
     println!("1) RUST");
 
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
     let choice: usize = input.trim().parse().unwrap();
 
-    let template_path: PathBuf = match choice {
-        1 => PathBuf::from("src/templates/rust_api"),
+    let template = match choice {
+        1 => TEMPLATES.get_dir("rust_api").unwrap(),
         _ => {
             println!("Choix invalide");
             return Ok(());
@@ -23,22 +23,27 @@ pub fn generator(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let current_dir = env::current_dir()?;
-    let project_path = current_dir.join(&name);
+    let project_path = current_dir.join(name);
+
     fs::create_dir_all(&project_path)?;
 
-    let mut dir_options = CopyOptions::new();
-    dir_options.overwrite = true;
+    copy_dir(template, &project_path)?;
 
-    for entry in fs::read_dir(&template_path)? {
-        let entry = entry?;
-        let path = entry.path();
-        let dest_path = project_path.join(entry.file_name());
+    println!("Projet créé dans {:?}", project_path);
 
-        if path.is_dir() {
-            copy_dir(&path, &project_path, &dir_options)?;
-        } else {
-            copy_file(&path, &dest_path, &fs_extra::file::CopyOptions::new())?;
-        }
+    Ok(())
+}
+
+fn copy_dir(dir: &Dir, dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    for file in dir.files() {
+        let path = dest.join(file.path().file_name().unwrap());
+        fs::write(path, file.contents())?;
+    }
+
+    for subdir in dir.dirs() {
+        let new_dest = dest.join(subdir.path().file_name().unwrap());
+        fs::create_dir_all(&new_dest)?;
+        copy_dir(subdir, &new_dest)?;
     }
 
     Ok(())
