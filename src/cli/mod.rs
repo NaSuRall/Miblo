@@ -4,6 +4,7 @@ use crate::generator;
 use crate::parser;
 use crate::runtime;
 use colored::*;
+use crate::generator::generator_yaml;
 
 #[derive(Subcommand)]
 enum Commands {
@@ -26,7 +27,7 @@ pub fn lunch() {
         Commands::Init { name } => {
             let _ = generator::generator(&name);
             let json_route_yaml = parser::reader_route(&name);
-            println!("{}", "API Générer avec success".green() );
+            generator_yaml::reader_json(json_route_yaml);
         }
         Commands::Run { name } => {
             println!("Lancement du serveur : ");
