@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::Path;
-
+// use colored::*;
 static TEMPLATES: Dir = include_dir!("$CARGO_MANIFEST_DIR/src/templates");
 
 pub fn generator(name: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -29,7 +29,7 @@ pub fn generator(name: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     copy_dir(template, &project_path)?;
 
-    println!("Projet créé dans {:?}", project_path);
+    // println!("API créé dans {:?}", project_path);
 
     Ok(())
 }

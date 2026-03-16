@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use crate::generator;
 use crate::parser;
 use crate::runtime;
+use colored::*;
 
 #[derive(Subcommand)]
 enum Commands {
@@ -23,10 +24,9 @@ pub fn lunch() {
 
     match cli.command {
         Commands::Init { name } => {
-            println!("Lancement du generateur");
             let _ = generator::generator(&name);
             let json_route_yaml = parser::reader_route(&name);
-            println!("Voici vos routes : {:#?}", json_route_yaml);
+            println!("{}", "API Générer avec success".green() );
         }
         Commands::Run { name } => {
             println!("Lancement du serveur : ");

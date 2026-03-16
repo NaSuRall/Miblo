@@ -17,8 +17,6 @@ pub fn reader_route(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     // Récuperer les données
     let data: serde_yaml::Value = serde_yaml::from_reader(reader)?;
     // Retourner en Json
-
-    // etc...
     let json = serde_json::to_string(&data)?;
     Ok(json)
 }

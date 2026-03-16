@@ -1,3 +1,7 @@
+pub mod config;
+pub mod models;
+pub mod routes;
+
 use axum::{Router, routing::get};
 
 #[tokio::main]
