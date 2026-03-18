@@ -5,7 +5,7 @@ use crate::parser;
 use crate::runtime;
 use colored::*;
 use crate::generator::generator_yaml;
-
+use crate::generator::generator_template;
 #[derive(Subcommand)]
 enum Commands {
     Init { name: String },
@@ -26,7 +26,7 @@ pub fn lunch()-> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Init { name } => {
             // generer le template
-            let _ = generator::generator(&name);
+            let _ = generator_template::generator(&name);
             // lire le fichier route.yaml et resortir en json
             let json_value = parser::reader_route(&name)?;
             // recuperer le json le lire et le trier
@@ -36,7 +36,7 @@ pub fn lunch()-> Result<(), Box<dyn std::error::Error>> {
             println!("Models: {:?}", models);
             println!("Database: {:?}", database);
             println!("Server: {:?}", server);
-            
+
             // generer les models, les routes, la conexion bdd et la database grace
             // au generator_yaml;
 
