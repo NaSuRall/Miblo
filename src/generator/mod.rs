@@ -1,4 +1,7 @@
 pub mod generator_yaml;
+pub mod generator_models;
+pub mod generator_routes;
+pub mod generator_server;
 
 use include_dir::{include_dir, Dir};
 use std::env;
@@ -30,8 +33,6 @@ pub fn generator(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&project_path)?;
 
     copy_dir(template, &project_path)?;
-
-    // println!("API créé dans {:?}", project_path);
 
     Ok(())
 }

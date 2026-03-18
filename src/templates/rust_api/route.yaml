@@ -24,14 +24,14 @@ auth: true
 
 # [ MODELS ]
 models:
-- name: "User"
-  field:
-    last_name: "string"
-    email: "string"
-    password: "Int"
+  - name: "User"
+    field:
+      last_name: "string"
+      email: "string"
+      password: "Int"
 
-- name: "Survey"
-  field:
-    creator_id: "Int"
-    email: "String"
-    password: "String"
+  - name: "Survey"
+    field:
+      creator_id: "Int"
+      email: "String"
+      password: "String"
