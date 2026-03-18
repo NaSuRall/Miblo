@@ -17,8 +17,8 @@ database:
     DB_USERNAME: root
     DB_PASSWORD: root
 # [ SERVER ]
-SERV_PORT: 8000
-
+server:
+  - port: 8000
 # [ CONFIGURATIONS ]
 auth: true
 

@@ -20,14 +20,26 @@ struct Cli {
     command: Commands,
 }
 
-pub fn lunch() {
+pub fn lunch()-> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Init { name } => {
+            // generer le template
             let _ = generator::generator(&name);
-            let json_route_yaml = parser::reader_route(&name);
-            generator_yaml::reader_json(json_route_yaml);
+            // lire le fichier route.yaml et resortir en json
+            let json_value = parser::reader_route(&name)?;
+            // recuperer le json le lire et le trier
+            let (routes, models, database, server) = generator_yaml::reader_json(json_value)?;
+
+            println!("Routes: {:?}", routes);
+            println!("Models: {:?}", models);
+            println!("Database: {:?}", database);
+            println!("Server: {:?}", server);
+            
+            // generer les models, les routes, la conexion bdd et la database grace
+            // au generator_yaml;
+
         }
         Commands::Run { name } => {
             println!("Lancement du serveur : ");
@@ -38,4 +50,5 @@ pub fn lunch() {
             println!("Voici toutes vos applications : ");
         }
     }
+    Ok(())
 }

@@ -2,8 +2,9 @@ use serde_json;
 use serde_yaml;
 use std::env;
 use std::path::PathBuf;
+use serde_json::Value;
 
-pub fn reader_route(name: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub fn reader_route(name: &str) -> Result<Value, Box<dyn std::error::Error>> {
     let current_dir: PathBuf = env::current_dir()?;
 
     // Aller dans l'api
@@ -18,7 +19,7 @@ pub fn reader_route(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     let data: serde_yaml::Value = serde_yaml::from_reader(reader)?;
 
     // Convertir en JSON (string)
-    let json = serde_json::to_string_pretty(&data)?; // pretty pour lisibilité
+    let json_value: Value = serde_json::to_value(&data)?; // pretty pour lisibilité
 
-    Ok(json)
+    Ok(json_value)
 }
