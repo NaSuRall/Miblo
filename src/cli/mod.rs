@@ -36,6 +36,7 @@ pub fn lunch()-> Result<(), Box<dyn std::error::Error>> {
             let _ = writer_models::write_model(&name, models);
             println!("{}", "Model Crée avec sucess".green());
 
+            println!("{:?}", routes);
             // generer les models, les routes, la conexion bdd et la database grace
             // au generator_yaml;
 
