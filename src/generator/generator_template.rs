@@ -1,4 +1,4 @@
-use include_dir::{include_dir, Dir};
+use include_dir::{Dir, include_dir};
 use std::env;
 use std::fs;
 use std::io;
@@ -28,7 +28,7 @@ pub fn generator(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&project_path)?;
 
     copy_dir(template, &project_path)?;
-
+    println!("PROJECT PATH : {:?}", project_path);
     Ok(())
 }
 
@@ -46,3 +46,4 @@ fn copy_dir(dir: &Dir, dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+

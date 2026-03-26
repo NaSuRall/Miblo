@@ -1,2 +1,0 @@
-Faire l'api de base ici utiliser Axum pour le serveur pour faire tourner l'api minimum 
-

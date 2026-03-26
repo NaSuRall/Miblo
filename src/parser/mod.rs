@@ -1,8 +1,8 @@
 use serde_json;
+use serde_json::Value;
 use serde_yaml;
 use std::env;
 use std::path::PathBuf;
-use serde_json::Value;
 
 pub fn reader_route(name: &str) -> Result<Value, Box<dyn std::error::Error>> {
     let current_dir: PathBuf = env::current_dir()?;
@@ -23,3 +23,4 @@ pub fn reader_route(name: &str) -> Result<Value, Box<dyn std::error::Error>> {
 
     Ok(json_value)
 }
+
