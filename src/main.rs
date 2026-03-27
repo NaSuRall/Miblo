@@ -5,5 +5,5 @@ mod runtime;
 pub mod writer;
 
 fn main() {
-    cli::lunch();
+    let _ = cli::lunch();
 }

@@ -1,12 +1,13 @@
-use std::error::Error;
 use serde_json::Value;
+use std::error::Error;
 
+use crate::generator::generator_routes::Route;
 
-pub fn reader_json(json: Value)
-    -> Result<(Vec<Value>, Vec<Value>, Vec<Value>, Value), Box<dyn Error>>
-{
-    
-    let route = json["route"].as_array().cloned().unwrap_or_default();
+pub fn reader_json(
+    json: Value,
+) -> Result<(Vec<Route>, Vec<Value>, Vec<Value>, Value), Box<dyn Error>> {
+    let routes = serde_json::from_value(json["route"].clone())?;
+
     let models = json["models"].as_array().cloned().unwrap_or_default();
     let server = json["server"].as_array().cloned().unwrap_or_default();
     let database = json.get("SERV_PORT").cloned().unwrap_or(Value::Null);
@@ -16,5 +17,6 @@ pub fn reader_json(json: Value)
     // println!("{:#?}", generated_model);
     // generator_routes::generate_routes(&route);
     // generator_server::generate_server(&server);
-    Ok(( route, models, server, database ))
+    Ok((routes, models, server, database))
 }
+
