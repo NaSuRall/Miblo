@@ -40,7 +40,11 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             let _ = writer_models::write_model(&name, models);
             println!("{}", "Model Crée avec sucess".green());
 
-            let _ = generator_routes::generate_routes(&routes);
+            
+            let code = generator_routes::generate_routes(&routes);
+
+            println!("CODE ROUTE :  {:?}", code);
+
             println!("{:?}", server);
             println!("{:?}", database);
         }
