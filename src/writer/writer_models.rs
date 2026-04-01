@@ -11,11 +11,13 @@ pub fn write_model(name: &str, models: Vec<Value>) ->  Result<(), Box<dyn std::e
     let model_dir = project_path.join("src/models");
 
     let mod_file_path = model_dir.join("mod.rs");
+    let mut mod_file = File::create(&mod_file_path)?;
+
     // ouvrir mod.rs
-    let mut mod_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(mod_file_path)?;
+    //let mut mod_file = OpenOptions::new()
+    //    .create(true)
+    //    .append(true)
+    //    .open(mod_file_path)?;
 
     let generated_models = generate_model(&models);
 
