@@ -39,14 +39,15 @@ pub fn generate_model(models: &Vec<Value>) -> Vec<(String, String)> {
 
    for model in models {
       let name = model["name"].as_str().expect("Model name is not a string");
-      let fields = model["fields"].as_object().expect("Field is not an array");
+      let fields = model["fields"].as_array().expect("Field is not an array");
 
       // transformer fields en un tableau  compatible handlebars
       let mut field_list = Vec::new();
 
-      for (field_name, field_type) in fields {
+      for field in fields {
 
-         let field_type_str = field_type.as_str().expect("field type");
+         let field_name = field["name"].as_str().expect("field type");
+         let field_type_str = field["type"].as_str().expect("Field type");
          let rust_type = map_type(field_type_str);
 
          field_list.push(json!({
