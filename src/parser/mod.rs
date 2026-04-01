@@ -1,6 +1,4 @@
-use serde_json;
 use serde_json::Value;
-use serde_yaml;
 use std::env;
 use std::path::PathBuf;
 
@@ -9,7 +7,7 @@ pub fn reader_route(name: &str) -> Result<Value, Box<dyn std::error::Error>> {
 
     // Aller dans l'api
     let project_path: PathBuf = current_dir.join(name);
-    println!("project_path : {:?}", project_path);
+    // println!("project_path : {:?}", project_path);
 
     // Lire le fichier route.yaml
     let route_file = project_path.join("route.yaml");

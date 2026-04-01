@@ -12,11 +12,6 @@ pub fn reader_json(
     let server = json["server"].as_array().cloned().unwrap_or_default();
     let database = json.get("SERV_PORT").cloned().unwrap_or(Value::Null);
 
-    // donner les valeur pour les differente fonction dans les fichiers
-    // let generated_model = generator_models::generate_model(&models);
-    // println!("{:#?}", generated_model);
-    // generator_routes::generate_routes(&route);
-    // generator_server::generate_server(&server);
     Ok((routes, models, server, database))
 }
 

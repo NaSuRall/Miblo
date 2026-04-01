@@ -4,6 +4,7 @@ use crate::generator::generator_yaml;
 use crate::parser;
 use crate::runtime;
 use crate::writer::writer_models;
+use crate::writer::writer_routes;
 use clap::{Parser, Subcommand};
 use colored::*;
 #[derive(Subcommand)]
@@ -42,8 +43,9 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
 
             
             let code = generator_routes::generate_routes(&routes);
-
-            println!("CODE ROUTE :  {:?}", code);
+            let _ = writer_routes::write_routes(&name, code);
+            println!("{}", "Route Crée avec Sucess".green());
+    
 
             println!("{:?}", server);
             println!("{:?}", database);
