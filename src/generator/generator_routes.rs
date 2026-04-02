@@ -1,5 +1,7 @@
 use serde::Deserialize;
-use std::fmt::Write;
+use handlebars::Handlebars;
+use serde_json::json;
+
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 pub struct Route {
@@ -10,28 +12,21 @@ pub struct Route {
 
 pub fn generate_routes(routes: &[Route]) -> String {
  
-    let mut code = String::new();
+    let mut hbs = Handlebars::new();
 
+    hbs.register_template_file(
+        "routes",
+        "src/templates/handlebars/rust/routes.rs.hbs"
+    ).expect("Failed to register routes template");
 
-    code.push_str("use axum::{Router, routing::{get, post}};\n");
-    code.push_str("use crate::handlers::*;\n\n");
+    let data = json!({
+        "routes": routes.iter().map(|r| json!({
+            "path": r.path,
+            "method": r.method.to_lowercase(),
+            "name": r.name.to_lowercase(),
+        })).collect::<Vec<_>>()
+    });
+    hbs.render("routes", &data).expect("Erreur render routes")
 
-    code.push_str("pub fn create_router() -> Router {\n");
-    code.push_str("    Router::new()\n");
-
-    for route in routes {
-        let method = route.method.to_lowercase();
-        let handler = route.name.to_lowercase();
-
-        writeln!(
-            code,
-            "        .route(\"{}\", {}({}))",
-            route.path, method, handler
-        )
-        .unwrap();
-    }
-        code.push_str("}\n");
-
-    code
 }
 

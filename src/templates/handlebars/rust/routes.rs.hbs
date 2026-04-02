@@ -1,9 +1,22 @@
 use axum::{Router, routing::{get, post}};
-use crate::handlers::*;
+// use crate::handlers::*;
+use crate::config::AppState;
 
-pub fn create_router() -> Router {
+pub fn create_router() -> Router<AppState> {
     Router::new()
     {{#each routes}}
-        .route("{{ this.path }}", {{ this.method }}({{ this.name }}))
+        .route("{{ this.path }}", {{ this.method }}({{ this.name }}()))
     {{/each}}
+}
+
+
+pub fn getuser() -> &'static str {
+
+    "Hello user"
+
+}
+
+pub fn createuser() -> &'static str {
+
+    "Create user"
 }

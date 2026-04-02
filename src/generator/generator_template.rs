@@ -8,7 +8,6 @@ const TEMPLATE_DIR: &str = "src/templates/handlebars/rust";
 
 pub fn generator(
     name: &str,
-    models: Vec<Value>,
     database: Vec<Value>,
     server: Vec<Value>,
     auth: bool,
@@ -34,7 +33,7 @@ pub fn generator(
 
     render_and_write(&mut hbs, "Cargo.toml", "Cargo.toml.hbs",&data, &project_path)?;
     render_and_write(&mut hbs, "src/main.rs", "main.rs.hbs", &data, &project_path)?;
-    render_and_write(&mut hbs, "src/config.rs", "config.rs.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, "src/config/mod.rs", "config.rs.hbs", &data, &project_path)?;
     render_and_write(&mut hbs, ".env", ".env.hbs", &data, &project_path)?;
 
     Ok(())

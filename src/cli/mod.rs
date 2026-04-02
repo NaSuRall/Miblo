@@ -44,7 +44,7 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             let auth = true; // a mettre dans le yaml ca
 
             // Générer la structure de base
-            generator_template::generator(&name, models.clone(), database, server, auth)?;
+            generator_template::generator(&name, database, server, auth)?;
             println!("{}", "Structure de base générée".green());
 
             writer_models::write_model(&name, models)?;
