@@ -18,6 +18,7 @@ pub fn generator(
 
     fs::create_dir_all(project_path.join("src/models"))?;
     fs::create_dir_all(project_path.join("src/routes"))?;
+    fs::create_dir_all(project_path.join("src/handlers"))?;
 
     let db = &database[0];
     let data = json!({
