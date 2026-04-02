@@ -26,29 +26,49 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::Init { name } => {
-            // generer le template
-            let _ = generator_template::generator(&name);
-            println!("{}", "Template generer".green());
+
+            let current_dir = std::env::current_dir()?;
+            let project_path = current_dir.join(&name);
+            std::fs::create_dir_all(&project_path)?;
+
+            let route_yaml_src = "src/templates/handlebars/rust/route.yaml";
+            let route_yaml_dest = project_path.join("route.yaml");
+            std::fs::copy(route_yaml_src, &route_yaml_dest)?;
+            println!("{}", "route.yaml copié".yellow());
+
+
+            // Lire le route.yaml
+            let json_value = parser::reader_route(&name)?;
+            println!("{}", "Lecture du fichier route.yaml....".yellow());
+            let (routes, models, database, server) = generator_yaml::reader_json(json_value)?;
+            let auth = true; // a mettre dans le yaml ca
+
+            // Générer la structure de base
+            generator_template::generator(&name, models.clone(), database, server, auth)?;
+            println!("{}", "Structure de base générée".green());
+
+            writer_models::write_model(&name, models)?;
+            println!("{}", "Models créés".green());
+
+            let code = generator_routes::generate_routes(&routes);
+            writer_routes::write_routes(&name, code)?;
+            println!("{}", "Routes créées".green());
+            println!("{}", "Projet initialisé avec succès !".green());
         }
 
         Commands::Generate { name } => {
+            // Regénère uniquement models et routes pour l'instant et puis la suite plus tard
             let json_value = parser::reader_route(&name)?;
             println!("{}", "Lecture du fichier route.yaml....".yellow());
 
-            let (routes, models, database, server) = generator_yaml::reader_json(json_value)?;
-            println!("{}", "Création des models de l'api....".yellow());
+            let (routes, models, _database, _server) = generator_yaml::reader_json(json_value)?;
 
-            let _ = writer_models::write_model(&name, models);
-            println!("{}", "Model Crée avec sucess".green());
+            writer_models::write_model(&name, models)?;
+            println!("{}", "Models mis à jour".green());
 
-            
             let code = generator_routes::generate_routes(&routes);
-            let _ = writer_routes::write_routes(&name, code);
-            println!("{}", "Route Crée avec Sucess".green());
-    
-
-            println!("{:?}", server);
-            println!("{:?}", database);
+            writer_routes::write_routes(&name, code)?;
+            println!("{}", "Routes mises à jour".green());
         }
 
         Commands::Run { name } => {

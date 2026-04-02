@@ -1,49 +1,55 @@
-use include_dir::{Dir, include_dir};
+use handlebars::Handlebars;
+use serde_json::{json, Value};
 use std::env;
 use std::fs;
-use std::io;
 use std::path::Path;
-// use colored::*;
-static TEMPLATES: Dir = include_dir!("$CARGO_MANIFEST_DIR/src/templates");
 
-pub fn generator(name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Quel langage souhaitez vous pour votre api ?");
-    println!("1) RUST");
+const TEMPLATE_DIR: &str = "src/templates/handlebars/rust";
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let choice: usize = input.trim().parse().unwrap();
+pub fn generator(
+    name: &str,
+    models: Vec<Value>,
+    database: Vec<Value>,
+    server: Vec<Value>,
+    auth: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut hbs = Handlebars::new();
+    let project_path = env::current_dir()?.join(name);
 
-    let template = match choice {
-        1 => TEMPLATES.get_dir("rust_api").unwrap(),
-        _ => {
-            println!("Choix invalide");
-            return Ok(());
-        }
-    };
+    fs::create_dir_all(project_path.join("src/models"))?;
+    fs::create_dir_all(project_path.join("src/routes"))?;
 
-    let current_dir = env::current_dir()?;
-    let project_path = current_dir.join(name);
+    let db = &database[0];
+    let data = json!({
+        "project_name": name,
+        "server_port": server[0]["port"],
+        "auth": auth,
+        "db_host":     db["DB_HOST"],
+        "db_port":     db["DB_PORT"],
+        "db_database": db["DB_DATABASE"],
+        "db_username": db["DB_USERNAME"],
+        "db_password": db["DB_PASSWORD"],
+    });
 
-    fs::create_dir_all(&project_path)?;
-
-    copy_dir(template, &project_path)?;
-    println!("PROJECT PATH : {:?}", project_path);
-    Ok(())
-}
-
-fn copy_dir(dir: &Dir, dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    for file in dir.files() {
-        let path = dest.join(file.path().file_name().unwrap());
-        fs::write(path, file.contents())?;
-    }
-
-    for subdir in dir.dirs() {
-        let new_dest = dest.join(subdir.path().file_name().unwrap());
-        fs::create_dir_all(&new_dest)?;
-        copy_dir(subdir, &new_dest)?;
-    }
+    render_and_write(&mut hbs, "Cargo.toml", "Cargo.toml.hbs",&data, &project_path)?;
+    render_and_write(&mut hbs, "src/main.rs", "main.rs.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, "src/config.rs", "config.rs.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, ".env", ".env.hbs", &data, &project_path)?;
 
     Ok(())
 }
 
+fn render_and_write( hbs: &mut Handlebars,output: &str,template_file: &str,data: &Value,base: &Path,)
+ -> Result<(), Box<dyn std::error::Error>> {
+
+    let template_path = format!("{}/{}", TEMPLATE_DIR, template_file);
+
+    hbs.register_template_file(template_file, &template_path)?;
+    let rendered = hbs.render(template_file, data)?;
+    let destination = base.join(output);
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(destination, rendered)?;
+    Ok(())
+}
