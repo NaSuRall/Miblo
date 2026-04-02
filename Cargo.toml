@@ -1,3 +1,24 @@
+
+[lib]
+name = "miblo_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "miblo_cli"
+path = "src/main.rs"
+
+
+
+[profile.dev]
+opt-level = 0
+debug = 1
+incremental = true
+codegen-units = 256
+
+[profile.dev.package."*"]
+opt-level = 3
+
+
 [package]
 name = "miblo_cli"
 version = "0.1.0"
