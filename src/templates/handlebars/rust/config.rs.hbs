@@ -17,7 +17,7 @@ pub async fn main() {
         .await
         .expect("Impossible de se connecter a MySQL");
     let state = AppState { db };
-    let address = env::var("SERVER_ADDRESS").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let address = env::var("SERVER_ADDRESS").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = env::var("SERVER_PORT").unwrap_or_else(|_| "{{ server_port }}".to_string());
     let app = routes::create_router().with_state(state);
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", address, port))

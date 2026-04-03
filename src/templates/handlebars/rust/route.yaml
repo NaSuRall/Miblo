@@ -11,14 +11,14 @@ route:
 # [ DATABASES ]
 database:
   - DB_CONNECTION: mysql
-    DB_HOST: 127.0.0.1
-    DB_PORT: 8889
-    DB_DATABASE: toolbox2026
-    DB_USERNAME: root
-    DB_PASSWORD: root
+    DB_HOST: 100.120.71.76
+    DB_PORT: 3306
+    DB_DATABASE: miblo_test
+    DB_USERNAME: askeet
+    DB_PASSWORD: Romain2024!
 # [ SERVER ]
 server:
-  - port: 8000
+  - port: 3000
 # [ CONFIGURATIONS ]
 auth: true
 
