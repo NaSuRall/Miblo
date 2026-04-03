@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::env;
-use std::fs::{File, OpenOptions};
+use std::fs::{File};
 use serde_json::Value;
 use crate::generator::generator_models::generate_model;
 

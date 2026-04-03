@@ -4,6 +4,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 use console::style;
 use std::io::BufRead;
+use std::io::BufReader;
 
 pub fn runtime(name: String) -> Result<(), Box<dyn std::error::Error>> {
 
@@ -33,9 +34,8 @@ pub fn runtime(name: String) -> Result<(), Box<dyn std::error::Error>> {
         .spawn()?;
 
     
-    // spinner.finish_and_clear();
     let stdout = start.stdout.take().unwrap();
-        for line in std::io::BufReader::new(stdout).lines() {
+        for line in BufReader::new(stdout).lines() {
             let line = line?;
                 if line.contains("Server running on") {
                     spinner.finish_and_clear();

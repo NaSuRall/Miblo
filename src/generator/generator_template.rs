@@ -23,6 +23,7 @@ pub fn generator(
     let data = json!({
         "project_name": name,
         "server_port": server[0]["port"],
+        "server_adress": server[1]["adress"],
         "auth": auth,
         "db_host":     db["DB_HOST"],
         "db_port":     db["DB_PORT"],

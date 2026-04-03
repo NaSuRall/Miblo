@@ -19,6 +19,7 @@ database:
 # [ SERVER ]
 server:
   - port: 3000
+  - adress: 0.0.0.0
 # [ CONFIGURATIONS ]
 auth: true
 
