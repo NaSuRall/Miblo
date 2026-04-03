@@ -43,7 +43,7 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             let (routes, models, database, server) = generator_yaml::reader_json(json_value)?;
             let auth = true; // a mettre dans le yaml ca
 
-            println!("DATABASE DATA : {:?}", database );
+        
             // Générer la structure de base
             generator_template::generator(&name, database, server, auth)?;
             println!("{}", "Structure de base générée".green());
@@ -73,7 +73,6 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         Commands::Run { name } => {
-            println!("Lancement du serveur : ");
             let _ = runtime::runtime(name);
         }
     }
