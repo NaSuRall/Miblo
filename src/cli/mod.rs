@@ -60,8 +60,6 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
 
             // Pour chaque models, crée dans le /handler le (model.name).rs avec les CRUD de base
             // gerer le mod.rs avec tout les fichier aussi
-            // let handler = generator_handler::generate_handler(&models);
-
             writer_handlers::write_handlers(&name, &models)?; 
 
             println!("{}", "Routes créées".green());
