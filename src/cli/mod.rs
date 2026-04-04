@@ -1,10 +1,13 @@
 use crate::generator::generator_routes;
+use crate::generator::generator_handler;
 use crate::generator::generator_template;
 use crate::generator::generator_yaml;
 use crate::parser;
 use crate::runtime;
+use crate::writer::writer_handlers;
 use crate::writer::writer_models;
 use crate::writer::writer_routes;
+
 use clap::{Parser, Subcommand};
 use colored::*;
 #[derive(Subcommand)]
@@ -27,14 +30,14 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Init { name } => {
 
+            // Copy le route.yaml du templates dans le projet ( en faire un fonction )
             let current_dir = std::env::current_dir()?;
             let project_path = current_dir.join(&name);
             std::fs::create_dir_all(&project_path)?;
-
             let route_yaml_src = "src/templates/handlebars/rust/route.yaml";
             let route_yaml_dest = project_path.join("route.yaml");
             std::fs::copy(route_yaml_src, &route_yaml_dest)?;
-            println!("{}", "route.yaml copié".yellow());
+            println!("{}", "route.yaml copié".yellow()); 
 
 
             // Lire le route.yaml
@@ -48,11 +51,19 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             generator_template::generator(&name, database, server, auth)?;
             println!("{}", "Structure de base générée".green());
 
-            writer_models::write_model(&name, models)?;
+            writer_models::write_model(&name, &models)?;
             println!("{}", "Models créés".green());
 
             let code = generator_routes::generate_routes(&routes);
             writer_routes::write_routes(&name, code)?;
+            
+
+            // Pour chaque models, crée dans le /handler le (model.name).rs avec les CRUD de base
+            // gerer le mod.rs avec tout les fichier aussi
+            // let handler = generator_handler::generate_handler(&models);
+
+            writer_handlers::write_handlers(&name, &models)?; 
+
             println!("{}", "Routes créées".green());
             println!("{}", "Projet initialisé avec succès !".green());
         }
@@ -64,7 +75,7 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
 
             let (routes, models, _database, _server) = generator_yaml::reader_json(json_value)?;
 
-            writer_models::write_model(&name, models)?;
+            writer_models::write_model(&name, &models)?;
             println!("{}", "Models mis à jour".green());
 
             let code = generator_routes::generate_routes(&routes);

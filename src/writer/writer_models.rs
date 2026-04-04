@@ -4,7 +4,7 @@ use std::fs::{File};
 use serde_json::Value;
 use crate::generator::generator_models::generate_model;
 
-pub fn write_model(name: &str, models: Vec<Value>) ->  Result<(), Box<dyn std::error::Error>>{
+pub fn write_model(name: &str, models: &Vec<Value>) ->  Result<(), Box<dyn std::error::Error>>{
 
     let current_dir = env::current_dir()?;
     let project_path = current_dir.join(name);
