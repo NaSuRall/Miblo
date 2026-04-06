@@ -5,7 +5,7 @@ use crate::config::AppState;
 pub fn create_router() -> Router<AppState> {
     Router::new()
     {{#each routes}}
-        .route("{{ this.path }}", {{ this.method }}({{ this.name }}()))
+        .route("{{ this.path }}", {{ this.method }}({{ this.model }}::get_{{ this.model }}))
     {{/each}}
 }
 

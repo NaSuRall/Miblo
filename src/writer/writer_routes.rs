@@ -5,10 +5,6 @@ use std::fs::{OpenOptions};
 
 pub fn write_routes(name: &str, routes: String) -> Result<() , Box<dyn std::error::Error>>{
 
-
-    println!("{:?}", routes);
-
-
     let current_dir = env::current_dir()?;
     let project_path = current_dir.join(name);
     let route_dir = project_path.join("src/routes");

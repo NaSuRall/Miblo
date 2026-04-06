@@ -2,11 +2,11 @@
 route:
   - method: get
     path: "/user/bonjour"
-    name: getUser
+    model: "User"
 
   - method: post
     path: "/users/create"
-    name: "createUser"
+    model: "User"
 
 # [ DATABASES ]
 database:

@@ -6,7 +6,7 @@ use serde_json::json;
 #[allow(dead_code)]
 pub struct Route {
     pub method: String,
-    pub name: String,
+    pub model: String,
     pub path: String,
 }
 
@@ -23,7 +23,7 @@ pub fn generate_routes(routes: &[Route]) -> String {
         "routes": routes.iter().map(|r| json!({
             "path": r.path,
             "method": r.method.to_lowercase(),
-            "name": r.name.to_lowercase(),
+            "model": r.model.to_lowercase(),
         })).collect::<Vec<_>>()
     });
     hbs.render("routes", &data).expect("Erreur render routes")
