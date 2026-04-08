@@ -19,7 +19,7 @@ pub fn write_model(name: &str, models: &Vec<Value>) ->  Result<(), Box<dyn std::
     //    .append(true)
     //    .open(mod_file_path)?;
 
-    let generated_models = generate_model(&models);
+    let generated_models = generate_model(models);
 
     for (model_name, content) in generated_models {
 
@@ -32,7 +32,21 @@ pub fn write_model(name: &str, models: &Vec<Value>) ->  Result<(), Box<dyn std::
         file.write_all(content.as_bytes())?;
 
         // ajoute dans mod.rs
+        
+        writeln!(mod_file, "
+                    pub mod claim;
+                    pub mod register;
+                    pub mod login;
+
+                    pub use claim::Claims;
+                    pub use login::AuthUser;
+                    pub use login::LoginRequest;
+                    pub use register::RegisterUser;
+                
+                    // Here model auto : 
+        ")?;
         writeln!(mod_file, "pub mod {};", model_name.to_lowercase())?;
+
     }
     Ok(())
 }

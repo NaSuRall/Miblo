@@ -7,7 +7,7 @@ use crate::config::AppState;
 pub fn create_router() -> Router<AppState> {
     Router::new()
         .route("/register", post(register::register))
-        .route("login", post(login::login))
+        .route("/login", post(login::login))
     {{#each routes}}
         .route("{{ this.path }}", {{ this.method }}({{ this.model }}::{{ this.method }}_{{ this.model }}))
     {{/each}}

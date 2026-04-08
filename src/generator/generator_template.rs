@@ -38,6 +38,13 @@ pub fn generator(
     render_and_write(&mut hbs, ".env", ".env.hbs", &data, &project_path)?;
     render_and_write(&mut hbs, "src/handlers/login.rs", "login.rs.hbs", &data, &project_path)?;
     render_and_write(&mut hbs, "src/handlers/register.rs", "register.rs.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, "src/models/claim.rs", "claim.rs.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, "src/models/register.rs", "register_model.rs.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, "src/models/login.rs", "login_model.rs.hbs", &data, &project_path)?;
+
+
+
+
 
     Ok(())
 }

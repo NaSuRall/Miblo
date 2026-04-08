@@ -1,0 +1,12 @@
+use serde::{Deserialize, Serialize};
+
+
+#[derive(Deserialize)]
+pub struct RegisterUser {
+    pub last_name: String,
+    pub first_name: String,
+    pub pseudo: String,
+    pub email: String,
+    pub password: String,
+    pub phone: String,
+}

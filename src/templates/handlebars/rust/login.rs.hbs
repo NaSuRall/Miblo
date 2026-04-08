@@ -5,12 +5,21 @@ use axum::extract::State;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde_json::{Value, json};
-
+use uuid::Uuid;
 
 pub async fn login(State(state): State<AppState>, Json(body): Json<LoginRequest>) -> Json<Value> {
 
-  let user = sqlx::query_file_as!(
-    AuthUser, "(chem to file sql)"
+  let user = sqlx::query_as!(
+    AuthUser, 
+        r#"
+                SELECT
+                    id as "id: Uuid",
+                    email,
+                    password
+                FROM users
+                WHERE email = ?
+                "#,
+        body.email,
   )
   .fetch_optional(&state.db)
   .await;
@@ -20,7 +29,7 @@ pub async fn login(State(state): State<AppState>, Json(body): Json<LoginRequest>
     Ok(Some(user)) => {
 
       if user.password == body.password {
-        let token = generate_token(user.id);
+        let token = generate_token(user.id.to_string());
         Json(json!({
           "token": token,
           "user": user
@@ -49,7 +58,7 @@ pub async fn login(State(state): State<AppState>, Json(body): Json<LoginRequest>
 
 }
 
-fn generate_token(user_id: u64) -> u64 {
+fn generate_token(user_id: String) -> String {
   let expiration = Utc::now()
     .checked_add_signed(Duration::hours(24))
     .unwrap()
@@ -58,7 +67,7 @@ fn generate_token(user_id: u64) -> u64 {
   let claims = Claims {
     sub: user_id,
     exp: expiration
-  }
+  };
 
   encode(
     &Header::default(),
