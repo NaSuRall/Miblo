@@ -36,6 +36,8 @@ pub fn generator(
     render_and_write(&mut hbs, "src/main.rs", "main.rs.hbs", &data, &project_path)?;
     render_and_write(&mut hbs, "src/config/mod.rs", "config.rs.hbs", &data, &project_path)?;
     render_and_write(&mut hbs, ".env", ".env.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, "src/handlers/login.rs", "login.rs.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, "src/handlers/register.rs", "register.rs.hbs", &data, &project_path)?;
 
     Ok(())
 }

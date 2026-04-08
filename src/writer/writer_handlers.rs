@@ -27,6 +27,8 @@ pub fn write_handlers(name: &str, handler: &Vec<Value>) -> Result<(), Box<dyn st
 
         file.write_all(content.as_bytes())?;
 
+        writeln!(mod_file, "pub mod register;")?;
+        writeln!(mod_file, "pub mod login;")?;
         writeln!(mod_file, "pub mod {};", handler_name.to_lowercase())?;
     }
 
