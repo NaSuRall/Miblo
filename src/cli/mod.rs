@@ -1,20 +1,28 @@
+use std::env;
+use std::path::PathBuf;
+
+use crate::engine::fs::copy_dir_all;
 use crate::generator::generator_routes;
 use crate::generator::generator_handler;
 use crate::generator::generator_template;
 use crate::generator::generator_yaml;
+use crate::engine::fs;
 use crate::parser;
 use crate::runtime;
 use crate::writer::writer_handlers;
 use crate::writer::writer_models;
 use crate::writer::writer_routes;
-
 use clap::{Parser, Subcommand};
 use colored::*;
+
+
+
 #[derive(Subcommand)]
 enum Commands {
     Init { name: String },
     Run { name: String },
     Generate { name: String },
+    Export { name: String, destination: PathBuf }
 }
 
 #[derive(Parser)]
@@ -83,6 +91,18 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
 
         Commands::Run { name } => {
             let _ = runtime::runtime(name);
+        }
+
+        Commands::Export { name, destination } => {
+    
+            // trouver le chemin de l'api generer
+            let current_dir = env::current_dir()?;
+            let project_path = current_dir.join(name);
+            println!("PROJECT PATH : {:?}", project_path);
+            // copier tout les fichier et dossier de l'api
+            copy_dir_all(&project_path, &destination)?;
+            println!("{}", "Project export OK".green());
+            // coller tout les fichier vers le chemin demander
         }
     }
     Ok(())
