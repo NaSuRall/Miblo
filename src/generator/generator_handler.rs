@@ -11,9 +11,9 @@ pub fn generate_handler(models: &Vec<Value>) -> Vec<(String, String)>{
 
     for model in models {
         let name = model["name"].as_str().expect("Model name is not a string");
-
+        let result = format!("{}{}", &name[..1].to_uppercase(), &name[1..]);
         let data = json!({
-            "handler_name": name.to_lowercase()
+            "handler_name": result
         });
 
         let rendered = handlebars

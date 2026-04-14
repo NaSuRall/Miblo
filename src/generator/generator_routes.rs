@@ -18,15 +18,25 @@ pub fn generate_routes(routes: &[Route]) -> String {
         "routes",
         "src/templates/handlebars/rust/routes.rs.hbs"
     ).expect("Failed to register routes template");
+    
+    
 
     let data = json!({
         "routes": routes.iter().map(|r| json!({
             "path": r.path,
             "method": r.method.to_lowercase(),
-            "model": r.model.to_lowercase(),
+            "model_low": r.model.to_lowercase(),
+            "model": capitalize(&r.model)
         })).collect::<Vec<_>>()
     });
     hbs.render("routes", &data).expect("Erreur render routes")
 
 }
 
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().to_string() + c.as_str(),
+    }
+}

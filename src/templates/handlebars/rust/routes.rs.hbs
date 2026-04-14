@@ -9,7 +9,7 @@ pub fn create_router() -> Router<AppState> {
         .route("/register", post(register::register))
         .route("/login", post(login::login))
     {{#each routes}}
-        .route("{{ this.path }}", {{ this.method }}({{ this.model }}::{{ this.method }}_{{ this.model }}))
+        .route("{{ this.path }}", {{ this.method }}({{ this.model_low }}::{{ this.method }}_{{ this.model }}))
     {{/each}}
 }
 

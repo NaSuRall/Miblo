@@ -27,7 +27,8 @@ pub fn write_model(name: &str, models: &Vec<Value>) ->  Result<(), Box<dyn std::
         let file_path = model_dir.join(&file_name);
 
         let mut file = File::create(file_path)?;
-
+    
+        let model_name_up = format!("{}{}", &model_name[..1].to_uppercase(), &model_name[1..]);
         // écrit la struct générée
         file.write_all(content.as_bytes())?;
 
@@ -46,6 +47,7 @@ pub fn write_model(name: &str, models: &Vec<Value>) ->  Result<(), Box<dyn std::
                     // Here model auto : 
         ")?;
         writeln!(mod_file, "pub mod {};", model_name.to_lowercase())?;
+        writeln!(mod_file, "pub use {}::{};", model_name.to_lowercase(), model_name_up)?;
 
     }
     Ok(())

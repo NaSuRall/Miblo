@@ -1,6 +1,26 @@
-pub async fn get_{{ handler_name }}() -> &'static str {
+use crate::config::AppState;
+use axum::{Json, extract::State};
+use serde_json::{Value, json};
+use crate::models::{{ handler_name }};
 
-  "TA PUTE DE BOUCHE CONNARD #get #post #hiro"
+pub async fn get_{{ handler_name }}(State(state): State<AppState>) -> Json<Value> {
+
+  let res = sqlx::query_as::<_,{{ handler_name }}>(
+    "SELECT * from {{ handler_name}} "
+  ).fetch_all(&state.db).await;
+
+
+  match res {
+    Ok(_) => Json(json!({
+      "status": "sucess",
+      "message": "Liste {{ handler_name}} OK "
+    })),
+    Err(e) => Json(json!({
+        "status": "error ",
+        "message": e.to_string()
+    }))
+  }
+  
 }
 
 pub async fn post_{{ handler_name }}() -> &'static str {
