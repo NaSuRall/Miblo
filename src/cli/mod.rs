@@ -6,6 +6,7 @@ use crate::generator::generator_routes;
 use crate::generator::generator_handler;
 use crate::generator::generator_template;
 use crate::generator::generator_yaml;
+use crate::generator::generator_sqlx;
 use crate::engine::fs;
 use crate::parser;
 use crate::runtime;
@@ -58,6 +59,13 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             // Générer la structure de base
             generator_template::generator(&name, database, server, auth)?;
             println!("{}", "Structure de base générée".green());
+            
+
+            // Générer le fichier des migrations
+            
+            generator_sqlx::generator(&name, &models);
+
+            //
 
             writer_models::write_model(&name, &models)?;
             println!("{}", "Models créés".green());

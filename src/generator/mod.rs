@@ -4,3 +4,4 @@ pub mod generator_server;
 pub mod generator_template;
 pub mod generator_yaml;
 pub mod generator_handler;
+pub mod generator_sqlx;
