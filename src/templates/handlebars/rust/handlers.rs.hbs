@@ -6,7 +6,7 @@ use crate::models::{{ handler_name }};
 pub async fn get_{{ handler_name }}(State(state): State<AppState>) -> Json<Value> {
 
   let res = sqlx::query_as::<_,{{ handler_name }}>(
-    "SELECT * from {{ handler_name}} "
+    "SELECT * from {{ handler_name_low }} "
   ).fetch_all(&state.db).await;
 
 
