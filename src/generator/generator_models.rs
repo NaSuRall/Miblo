@@ -45,7 +45,7 @@ use serde_json::{json, Value};
    results
 }
 
-fn map_type(t: &str) -> &str {
+pub fn map_type(t: &str) -> &str {
    match t {
       "String" | "string" => "String",
       "Int" | "int" => "i32",
