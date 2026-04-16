@@ -4,7 +4,7 @@ use std::env::current_dir;
 use std::process::{Command};
 use serde_json::{json};
 
-use crate::generator::generator_models::map_type;
+use crate::generator::generator_models::{map_type, map_type_sql};
 use crate::writer;
 
 
@@ -28,6 +28,7 @@ pub fn generator(name: &str, models: &Vec<Value>)  {
         .expect("Impossible de lire le stdout");
 
 
+    // recupere le nom du fichier de migration²
     let migration_path = stdout
         .split_whitespace()
         .last()
@@ -46,15 +47,16 @@ pub fn generator(name: &str, models: &Vec<Value>)  {
             let field_name = field["name"].as_str().expect("field type");
             let field_type_str = field["type"].as_str().expect("field type");
             let rust_type = map_type(field_type_str);
+            let sql_type = map_type_sql(rust_type);
 
             field_list.push(json!({
                 "name": field_name,
-                "type": rust_type
+                "type": sql_type
             }))
         }
         
         let data = json!({
-            "model_name": name,
+            "model_name": name.to_lowercase(),
             "fields": field_list
         });
         

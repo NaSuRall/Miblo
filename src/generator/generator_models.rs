@@ -52,3 +52,15 @@ pub fn map_type(t: &str) -> &str {
       _ => "String",
    }
 }
+
+pub fn map_type_sql(rust_type: &str) -> &str {
+    match rust_type {
+        "String" => "TEXT",
+        "i32" => "INTEGER",
+        "i64" => "BIGINT",
+        "bool" => "BOOLEAN",
+        "f32" => "REAL",
+        "f64" => "DOUBLE PRECISION",
+        _ => "TEXT", // fallback
+    }
+}

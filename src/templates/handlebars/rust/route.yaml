@@ -32,6 +32,6 @@ models:
       - name: email
         type: string
       - name: password
-        type: Int
+        type: String
       - name: test
-        type: string
+        type: Int
