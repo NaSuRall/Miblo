@@ -4,6 +4,9 @@ use std::env::current_dir;
 use std::process::{Command};
 use serde_json::{json};
 
+use crate::generator::generator_models::map_type;
+use crate::writer;
+
 
 pub fn generator(name: &str, models: &Vec<Value>)  {
 
@@ -41,9 +44,12 @@ pub fn generator(name: &str, models: &Vec<Value>)  {
     
         for field in fields {
             let field_name = field["name"].as_str().expect("field type");
+            let field_type_str = field["type"].as_str().expect("field type");
+            let rust_type = map_type(field_type_str);
 
             field_list.push(json!({
                 "name": field_name,
+                "type": rust_type
             }))
         }
         
@@ -56,12 +62,13 @@ pub fn generator(name: &str, models: &Vec<Value>)  {
             .render("migration", &data)
             .expect("Erreur render template");
 
-        results.push((name.to_string(), rendered));
+        results.push(rendered);
 
     }
 
     // Ouvrir le Fichier migration_dir
     // lancer le writer ici
+    writer::writer_migration::write_migration(migration_dir, &results);
 
-
+    
 }
