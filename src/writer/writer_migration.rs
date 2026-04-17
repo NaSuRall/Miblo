@@ -3,7 +3,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 
-pub fn write_migration( migration_dir: PathBuf, data: &[String]) {
+pub fn write_migration( migration_dir: PathBuf, data: Vec<(String, String)>) {
     
 
     let mut file = OpenOptions::new()
@@ -13,7 +13,7 @@ pub fn write_migration( migration_dir: PathBuf, data: &[String]) {
     
     for line in data {
 
-        writeln!(file, "{}", line)
+        writeln!(file, "{}", line.1)
         .expect("Erreur lors de l'ecriture");
     }
 

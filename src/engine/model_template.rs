@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::engine::global_fn::map_type;
 
 
-pub fn send_model_handelbars(type_fn: Option<fn(&str) -> &str >, models: &Vec<Value>, registry: Handlebars) -> Vec<(String, String)> {
+pub fn send_model_handelbars(name_template: &str ,type_fn: Option<fn(&str) -> &str >, models: &Vec<Value>, registry: Handlebars) -> Vec<(String, String)> {
     let mut results = Vec::new();
 
     for model in models {
@@ -33,7 +33,7 @@ pub fn send_model_handelbars(type_fn: Option<fn(&str) -> &str >, models: &Vec<Va
 
         // rendu handlebars
         let rendered = registry
-            .render("model", &data)
+            .render(name_template, &data)
             .expect("Erreur render template");
 
         results.push((name.to_string(), rendered));
