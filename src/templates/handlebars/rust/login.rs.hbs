@@ -29,7 +29,7 @@ pub async fn login(State(state): State<AppState>, Json(body): Json<LoginRequest>
     Ok(Some(user)) => {
 
       if user.password == body.password {
-        let token = generate_token(user.id.to_string());
+        let token = generate_token(user.id.unwrap().to_string());
         Json(json!({
           "token": token,
           "user": user

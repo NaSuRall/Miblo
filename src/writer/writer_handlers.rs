@@ -15,6 +15,8 @@ pub fn write_handlers(name: &str, handler: &Vec<Value>) -> Result<(), Box<dyn st
     let mod_file_path = handler_dir.join("mod.rs");
     let mut mod_file = File::create(&mod_file_path)?;
 
+        writeln!(mod_file, "pub mod register;")?;
+        writeln!(mod_file, "pub mod login;")?;
 
     let generated_handlers = generate_handler(handler);
     
@@ -27,8 +29,7 @@ pub fn write_handlers(name: &str, handler: &Vec<Value>) -> Result<(), Box<dyn st
 
         file.write_all(content.as_bytes())?;
 
-        writeln!(mod_file, "pub mod register;")?;
-        writeln!(mod_file, "pub mod login;")?;
+      
         writeln!(mod_file, "pub mod {};", handler_name.to_lowercase())?;
     }
 

@@ -2,11 +2,11 @@
 route:
   - method: get
     path: "/user/bonjour"
-    model: "User"
+    model: "Users"
 
   - method: post
     path: "/users/create"
-    model: "User"
+    model: "Users"
 
 # [ DATABASES ]
 database:
@@ -18,20 +18,34 @@ database:
     DB_PASSWORD: Romain2024!
 # [ SERVER ]
 server:
-  - port: 3000
+  - port: 4000
   - adress: 0.0.0.0
 # [ CONFIGURATIONS ]
 auth: true
 
 # [ MODEL ]
 models:
-  - name: "User"
+  - name: "Users"
     fields:
-      - name: last_name
-        type: string
+      - name: id
+        type: Binary
       - name: email
-        type: string
+        type: String
       - name: password
         type: String
-      - name: test
-        type: Int
+      - name: first_name
+        type: String
+      - name: last_name
+        type: String
+      - name: phone
+        type: String
+      - name: pseudo
+        type: String
+  
+  - name: "Survey"
+    fields:
+      - name: name
+        type: string
+      - name: last_name
+        type: string
+
