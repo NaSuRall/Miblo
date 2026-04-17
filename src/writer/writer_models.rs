@@ -28,7 +28,7 @@ pub fn write_model(name: &str, models: &Vec<Value>) ->  Result<(), Box<dyn std::
         pub use login::LoginRequest;
         pub use register::RegisterUser;
                 
-                    // Here model auto : 
+        // Here model auto : 
     ")?;
 
     let generated_models = generate_model(models);

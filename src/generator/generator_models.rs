@@ -1,8 +1,10 @@
 use handlebars::Handlebars;
 use serde_json::{json, Value};
+use crate::engine::global_fn::map_type;
+use crate::engine::model_template::send_model_handelbars;
 
  pub fn generate_model(models: &Vec<Value>) -> Vec<(String, String)> {
-   let mut results = Vec::new();
+   //let mut results = Vec::new();
    let mut handlebars = Handlebars::new();
 
    println!("current dir: {:?}", std::env::current_dir());
@@ -11,6 +13,7 @@ use serde_json::{json, Value};
        .expect("Failed to register template file for handlebars");
 
 
+   /*
    for model in models {
       let name = model["name"].as_str().expect("Model name is not a string");
       let fields = model["fields"].as_array().expect("Field is not an array");
@@ -42,28 +45,13 @@ use serde_json::{json, Value};
 
       results.push((name.to_string(), rendered));
    }
-   results
+   */
+   // results
+   
+   send_model_handelbars(None, models, handlebars)
+   
+
+
 }
 
-pub fn map_type(t: &str) -> &str {
-   match t {
-      "String" | "string" => "String",
-      "Int" | "int" => "i32",
-      "Binary" => "u8",
-      _ => "String",
-   }
-}
 
-pub fn map_type_sql(rust_type: &str) -> &str {
-    match rust_type {
-        "String" => "VARCHAR(255)",
-        "i32" => "INTEGER",
-        "i64" => "BIGINT",
-        "bool" => "BOOLEAN",
-        "f32" => "REAL",
-        "f64" => "DOUBLE PRECISION",
-        "u8" => "BINARY(16)",
-      _ => "TEXT", // fallback
-      
-    }
-}

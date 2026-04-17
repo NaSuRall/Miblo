@@ -4,7 +4,8 @@ use std::env::current_dir;
 use std::process::{Command};
 use serde_json::{json};
 
-use crate::generator::generator_models::{map_type, map_type_sql};
+use crate::engine::global_fn::map_type;
+use crate::engine::global_fn::map_type_sql;
 use crate::writer;
 
 
