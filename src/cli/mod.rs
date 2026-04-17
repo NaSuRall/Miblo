@@ -3,11 +3,9 @@ use std::path::PathBuf;
 
 use crate::engine::fs::copy_dir_all;
 use crate::generator::generator_routes;
-use crate::generator::generator_handler;
 use crate::generator::generator_template;
 use crate::generator::generator_yaml;
 use crate::generator::generator_sqlx;
-use crate::engine::fs;
 use crate::parser;
 use crate::runtime;
 use crate::writer::writer_handlers;
@@ -64,6 +62,8 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             // Générer le fichier des migrations
             
             generator_sqlx::generator(&name, &models);
+        
+                
 
             //
 
