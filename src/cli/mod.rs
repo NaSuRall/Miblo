@@ -37,47 +37,41 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Init { name } => {
 
-            // Copy le route.yaml du templates dans le projet ( en faire un fonction )
+            // Création du Dossier ( nom de l'api)
             let current_dir = std::env::current_dir()?;
             let project_path = current_dir.join(&name);
             std::fs::create_dir_all(&project_path)?;
+            // Récuperation du fichier ROUTE.YAML du template
+            // et coller dans le dossier de l'api
             let route_yaml_src = "src/templates/handlebars/rust/route.yaml";
             let route_yaml_dest = project_path.join("route.yaml");
             std::fs::copy(route_yaml_src, &route_yaml_dest)?;
             println!("{}", "route.yaml copié".yellow()); 
 
 
-            // Lire le route.yaml
+            // Lecture du Fichier Route.yaml 
             let json_value = parser::reader_route(&name)?;
-            println!("{}", "Lecture du fichier route.yaml....".yellow());
             let (routes, models, database, server) = generator_yaml::reader_json(json_value)?;
-            let auth = true; // a mettre dans le yaml ca
+            let auth = true;
 
-        
-            // Générer la structure de base
+            // Générer la structure de base grace au donnée du ROUTE.YAML
+            // donc generation des fichiers de config model routes 
             generator_template::generator(&name, database, server, auth)?;
-            println!("{}", "Structure de base générée".green());
-            
-
-            // Générer le fichier des migrations
-            
+           
+            // Génération du fichier "migration" pour preparer sqlx
             generator_sqlx::generator(&name, &models);
         
-                
-
-            //
-
+            // Génération des MODELS ROUTES ET HANDLERS dans le projet 
             writer_models::write_model(&name, &models)?;
-            println!("{}", "Models créés".green());
+           
 
             let code = generator_routes::generate_routes(&routes);
             writer_routes::write_routes(&name, code)?;
-            
+            writer_handlers::write_handlers(&name, &models)?;
 
-            // Pour chaque models, crée dans le /handler le (model.name).rs avec les CRUD de base
-            // gerer le mod.rs avec tout les fichier aussi
-            writer_handlers::write_handlers(&name, &models)?; 
 
+            println!("{}", "Structure de base générée".green());
+            println!("{}", "Models créés".green());
             println!("{}", "Routes créées".green());
             println!("{}", "Projet initialisé avec succès !".green());
         }

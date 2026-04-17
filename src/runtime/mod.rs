@@ -25,7 +25,7 @@ pub fn runtime(name: String) -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = current_dir().expect("Impossible de trouver le dossier current");
 
     let project_path = current_dir.join(&name);
-    
+
     let command = Command::new("sqlx")
         .args(["migrate", "run"])
         .current_dir(&project_path)
@@ -38,7 +38,7 @@ pub fn runtime(name: String) -> Result<(), Box<dyn std::error::Error>> {
         .stderr(Stdio::null())
         .spawn()?;
 
-    
+
     let stdout = start.stdout.take().unwrap();
         for line in BufReader::new(stdout).lines() {
             let line = line?;
