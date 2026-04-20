@@ -3,32 +3,28 @@ use crate::models::RegisterUser;
 use axum::{Json, extract::State};
 use bcrypt::{DEFAULT_COST, hash};
 use serde_json::{Value, json};
-use uuid::Uuid;
 
 pub async fn register(
   State(state): State<AppState>,
   Json(body): Json<RegisterUser>,
 ) -> Json<Value> {
 
-  let id = Uuid::new_v4();
 
   let hashed_password = hash(body.password, DEFAULT_COST).unwrap();
   let result = sqlx::query!(
-    "INSERT INTO users (id, last_name, first_name, pseudo, email, password, phone) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    id,
+    "INSERT INTO users (last_name, first_name, pseudo, email, password, phone) VALUES (?, ?, ?, ?, ?, ?)",
     body.last_name,
     body.first_name,
     body.pseudo,
     body.email,
     hashed_password,
     body.phone,
-  ) 
+  )
   .execute(&state.db)
   .await;
 
   match result {
     Ok(_) => Json(json!({
-    
       "status": "success",
       "message": "User registered successfully"
 
@@ -37,6 +33,5 @@ pub async fn register(
       "error": e.to_string()
     }))
   }
-
 
 }

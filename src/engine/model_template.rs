@@ -22,12 +22,19 @@ pub fn send_model_handelbars(name_template: &str ,type_fn: Option<fn(&str) -> &s
 
             field_list.push(json!({
                    "name": field_name,
-                    "type": processed_type.unwrap_or(rust_type)
+                    "type": processed_type.unwrap_or(rust_type),
+                    "primary_key": field["primary_key"].as_bool().unwrap_or(false),
+                    "auto_increment": field["auto_increment"].as_bool().unwrap_or(false),
+                    "not_null": field["not_null"].as_bool().unwrap_or(false),
+                    "null": field["null"].as_bool().unwrap_or(false),
+                    "unique": field["unique"].as_bool().unwrap_or(false),
+                    "default": field["default"].as_str().unwrap_or(""),
                 }));
         }
         // données envoyées au template
         let data = json!({
-                "model_name": name,
+                "model_name": name.to_lowercase(),
+                "model_name_up": name,
                 "fields": field_list
             });
 

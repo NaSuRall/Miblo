@@ -1,5 +1,5 @@
 CREATE TABLE {{ model_name }} (
   {{#each fields}}
-  {{ name }} {{ type }}{{#unless @last}},{{/unless}} 
+  {{ name }} {{ type }}{{#if primary_key}} PRIMARY KEY{{/if}}{{#if auto_increment}} AUTO_INCREMENT{{/if}}{{#if not_null}} NOT NULL{{/if}}{{#if null}} NULL{{/if}}{{#if unique}} UNIQUE{{/if}}{{#if default}} DEFAULT {{ default }}{{/if}}{{#unless @last}},{{/unless}}
   {{/each}}
 );

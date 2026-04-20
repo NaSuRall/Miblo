@@ -28,19 +28,28 @@ models:
   - name: "Users"
     fields:
       - name: id
-        type: Binary
+        type: Int
+        primary_key: true
+        auto_increment: true
       - name: email
         type: String
+        not_null: true
+        unique: true
       - name: password
         type: String
+        not_null: true
       - name: first_name
         type: String
+        not_null: true
       - name: last_name
         type: String
+        not_null: true
       - name: phone
         type: String
+        not_null: true
       - name: pseudo
         type: String
+        not_null: true
   
   - name: "Survey"
     fields:
