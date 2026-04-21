@@ -13,7 +13,7 @@ pub struct Route {
 pub fn generate_routes(routes: &[Route]) -> String {
  
     let mut hbs = Handlebars::new();
-
+    println!("Liste routes : {:?}", routes);
     hbs.register_template_file(
         "routes",
         "src/templates/handlebars/rust/routes.rs.hbs"

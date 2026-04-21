@@ -26,7 +26,7 @@ pub fn runtime(name: String) -> Result<(), Box<dyn std::error::Error>> {
 
     let project_path = current_dir.join(&name);
 
-    let command = Command::new("sqlx")
+    let _command = Command::new("sqlx")
         .args(["migrate", "run"])
         .current_dir(&project_path)
         .output();

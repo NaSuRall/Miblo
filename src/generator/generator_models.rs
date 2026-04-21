@@ -6,13 +6,11 @@ use crate::engine::model_template::send_model_handelbars;
    //let mut results = Vec::new();
    let mut handlebars = Handlebars::new();
 
-   println!("current dir: {:?}", std::env::current_dir());
    handlebars
        .register_template_file("model", "src/templates/handlebars/rust/model.rs.hbs")
        .expect("Failed to register template file for handlebars");
 
-   
-   
+     
    send_model_handelbars("model",None, models, handlebars)
    
 }

@@ -3,7 +3,7 @@ use axum::{Json, extract::State};
 use serde_json::{Value, json};
 use crate::models::{{ handler_name }};
 
-pub async fn get_{{ handler_name }}(State(state): State<AppState>) -> Json<Value> {
+pub async fn get_{{ handler_name_low }}(State(state): State<AppState>) -> Json<Value> {
 
   let res = sqlx::query_as::<_,{{ handler_name }}>(
     "SELECT * from {{ handler_name_low }} "
@@ -23,17 +23,17 @@ pub async fn get_{{ handler_name }}(State(state): State<AppState>) -> Json<Value
   
 }
 
-pub async fn post_{{ handler_name }}() -> &'static str {
+pub async fn post_{{ handler_name_low }}() -> &'static str {
 
   "POST TA PUTE DE BOUCHE CONNARD" 
 }
 
-pub async fn update_{{ handler_name }}() -> &'static str {
+pub async fn update_{{ handler_name_low }}() -> &'static str {
 
   "UPDATE TA PUTE DE MERE"
 }
 
-pub async fn delete_{{ handeler_name}}() -> &'static str {
+pub async fn delete_{{ handeler_name_low }}() -> &'static str {
 
   "DELETE TA CON DE CONNARD"
 }

@@ -46,7 +46,7 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             let route_yaml_src = "src/templates/handlebars/rust/route.yaml";
             let route_yaml_dest = project_path.join("route.yaml");
             std::fs::copy(route_yaml_src, &route_yaml_dest)?;
-            println!("{}", "route.yaml copié".yellow()); 
+        
 
 
             // Lecture du Fichier Route.yaml 
@@ -70,10 +70,8 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             writer_handlers::write_handlers(&name, &models)?;
 
 
-            println!("{}", "Structure de base générée".green());
-            println!("{}", "Models créés".green());
-            println!("{}", "Routes créées".green());
-            println!("{}", "Projet initialisé avec succès !".green());
+            println!("{}", "Structure de base générée [ MODELS, ROUTES, HANDLERS, ROUTE.YAML ]".green());
+            println!("{}", "Vous pouvez maintenant acceder a au fichier [route.yaml] pour y modifier les données !".yellow());
         }
 
         Commands::Generate { name } => {
