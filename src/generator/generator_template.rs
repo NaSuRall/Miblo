@@ -18,7 +18,8 @@ pub fn generator(
     fs::create_dir_all(project_path.join("src/models"))?;
     fs::create_dir_all(project_path.join("src/routes"))?;
     fs::create_dir_all(project_path.join("src/handlers"))?;
-
+    fs::create_dir_all(project_path.join("src/sql"))?;
+    
     let db = &database[0];
     let data = json!({
         "project_name": name,
@@ -39,7 +40,8 @@ pub fn generator(
     render_and_write(&mut hbs, "src/handlers/login.rs", "login.rs.hbs", &data, &project_path)?;
     render_and_write(&mut hbs, "src/handlers/register.rs", "register.rs.hbs", &data, &project_path)?;
     render_and_write(&mut hbs, "src/models/claim.rs", "claim.rs.hbs", &data, &project_path)?;
-    render_and_write(&mut hbs, "src/models/register.rs", "register_model.rs.hbs", &data, &project_path)?;
+    render_and_write(&mut hbs, "src/models/register.rs", "register_model.rs.hbs", &data, &project_path
+)?;
     render_and_write(&mut hbs, "src/models/login.rs", "login_model.rs.hbs", &data, &project_path)?;
 
 

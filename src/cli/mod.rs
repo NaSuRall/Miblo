@@ -6,6 +6,7 @@ use crate::generator::generator_routes;
 use crate::generator::generator_template;
 use crate::generator::generator_yaml;
 use crate::generator::generator_sqlx;
+use crate::generator::generator_sql;
 use crate::parser;
 use crate::runtime;
 use crate::writer::writer_handlers;
@@ -64,7 +65,12 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             // Génération des MODELS ROUTES ET HANDLERS dans le projet 
             writer_models::write_model(&name, &models)?;
            
-
+            // Generation des fichier sql 
+            //
+            generator_sql::generator(&name , &models);
+            //
+            // fin 
+            
             let code = generator_routes::generate_routes(&routes);
             writer_routes::write_routes(&name, code)?;
             writer_handlers::write_handlers(&name, &models)?;
