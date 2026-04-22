@@ -11,7 +11,7 @@ use crate::engine::model_template::send_model_handelbars;
        .expect("Failed to register template file for handlebars");
 
      
-   send_model_handelbars("model",None, models, handlebars)
+   send_model_handelbars("model",None, models, &handlebars)
    
 }
 

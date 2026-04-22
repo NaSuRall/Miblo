@@ -35,7 +35,7 @@ pub fn generator(name: &str, models: &Vec<Value>)  {
 
     let migration_dir = project_path.join(migration_path);
     
-    let results = send_model_handelbars("migration",Some(map_type_sql), models, handlebars);
+    let results = send_model_handelbars("migration",Some(map_type_sql), models, &handlebars);
 
 
     // Ouvrir le Fichier migration_dir
