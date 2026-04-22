@@ -57,4 +57,11 @@ models:
         type: string
       - name: last_name
         type: string
+  
+  - name: "CACA"
+    fields:
+      - name: first_name
+        type: string
+      - name: last_name
+        type: string
 

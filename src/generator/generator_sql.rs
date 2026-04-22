@@ -1,4 +1,5 @@
 use serde_json::Value;
+use crate::writer::writer_sql;
 use handlebars::Handlebars;
 
 use crate::engine::{global_fn::map_type_sql, model_template::send_model_handelbars};
@@ -31,9 +32,11 @@ pub fn generator(name: &str, models: &Vec<Value>) {
 
     
     // prendre les Donnes des fichier sql et le donner au writer
+    
+    writer_sql::writer(name ,get, post, patch, delete);
 
-    println!("get : {:?}", get);
-    println!("post: {:?}", post);
-    println!("patch: {:?}", patch);
-    println!("delete: {:?}", delete);
+    //println!("get : {:?}", get);
+    //println!("post: {:?}", post);
+    //println!("patch: {:?}", patch);
+    //println!("delete: {:?}", delete);
 }
