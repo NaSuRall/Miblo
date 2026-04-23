@@ -18,7 +18,7 @@ pub fn write_handlers(name: &str, handler: &Vec<Value>) -> Result<(), Box<dyn st
         writeln!(mod_file, "pub mod register;")?;
         writeln!(mod_file, "pub mod login;")?;
 
-    let generated_handlers = generate_handler(handler);
+    let generated_handlers = generate_handler(handler, name);
     
     for (handler_name, content) in generated_handlers {
 
