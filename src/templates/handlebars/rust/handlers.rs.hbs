@@ -13,9 +13,9 @@ pub async fn get_{{ handler_name_low }}(State(state): State<AppState>) -> Json<V
   .fetch_all(&state.db).await;
 
   match res {
-    Ok(_) => Json(json!({
+    Ok(data) => Json(json!({
       "status": "sucess",
-      "message": "Liste {{ handler_name}} OK "
+      "data": data
     })),
     Err(e) => Json(json!({
         "status": "error ",

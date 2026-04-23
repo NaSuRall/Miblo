@@ -2,6 +2,8 @@ use serde::Deserialize;
 use handlebars::Handlebars;
 use serde_json::json;
 
+use crate::writer::writer_routes;
+
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
 pub struct Route {
@@ -10,7 +12,7 @@ pub struct Route {
     pub path: String,
 }
 
-pub fn generate_routes(routes: &[Route]) -> String {
+pub fn generate_routes(name: &str, routes: &[Route]) {
  
     let mut hbs = Handlebars::new();
     hbs.register_template_file(
@@ -28,8 +30,9 @@ pub fn generate_routes(routes: &[Route]) -> String {
             "model": capitalize(&r.model)
         })).collect::<Vec<_>>()
     });
-    hbs.render("routes", &data).expect("Erreur render routes")
+    let code = hbs.render("routes", &data).expect("Erreur render routes");
 
+    let _ = writer_routes::write_routes(name, code);
 }
 
 fn capitalize(s: &str) -> String {

@@ -1,12 +1,21 @@
 # [ ROUTES ]
 route:
   - method: get
-    path: "/user/bonjour"
+    path: "/users"
     model: "Users"
 
   - method: post
     path: "/users/create"
     model: "Users"
+
+  - method: get
+    path: "/survey"
+    model: "Survey"
+  
+  - method: post
+    path: "/survey/create"
+    model: "Survey"
+
 
 # [ DATABASES ]
 database:

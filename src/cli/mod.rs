@@ -16,7 +16,6 @@ use clap::{Parser, Subcommand};
 use colored::*;
 
 
-
 #[derive(Subcommand)]
 enum Commands {
     Init { name: String },
@@ -37,7 +36,6 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::Init { name } => {
-
             // Création du Dossier ( nom de l'api)
             let current_dir = std::env::current_dir()?;
             let project_path = current_dir.join(&name);
@@ -48,31 +46,17 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             let route_yaml_dest = project_path.join("route.yaml");
             std::fs::copy(route_yaml_src, &route_yaml_dest)?;
         
-
-
             // Lecture du Fichier Route.yaml 
             let json_value = parser::reader_route(&name)?;
-            let (routes, models, database, server) = generator_yaml::reader_json(json_value)?;
-            let auth = true;
+            let (routes, models, database, server, auth) = generator_yaml::reader_json(json_value)?;
 
-            // Générer la structure de base grace au donnée du ROUTE.YAML
-            // donc generation des fichiers de config model routes 
+            // GENERATEUR DE STRUCTURE 
+            // [ ROUTES , MODEL , HANDLERS , MIGRATION , SQL]
             generator_template::generator(&name, database, server, auth)?;
-           
-            // Génération du fichier "migration" pour preparer sqlx
             generator_sqlx::generator(&name, &models);
-        
-            // Génération des MODELS ROUTES ET HANDLERS dans le projet 
             writer_models::write_model(&name, &models)?;
-           
-            // Generation des fichier sql 
-            //
-            generator_sql::generator(&name , &models);
-            //
-            // fin 
-            
-            let code = generator_routes::generate_routes(&routes);
-            writer_routes::write_routes(&name, code)?;
+            generator_sql::generator(&name , &models); 
+            generator_routes::generate_routes(&name, &routes);
             writer_handlers::write_handlers(&name, &models)?;
 
 
@@ -85,13 +69,13 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             let json_value = parser::reader_route(&name)?;
             println!("{}", "Lecture du fichier route.yaml....".yellow());
 
-            let (routes, models, _database, _server) = generator_yaml::reader_json(json_value)?;
+            let (routes, models, _database, _server, _auth) = generator_yaml::reader_json(json_value)?;
 
             writer_models::write_model(&name, &models)?;
             println!("{}", "Models mis à jour".green());
 
-            let code = generator_routes::generate_routes(&routes);
-            writer_routes::write_routes(&name, code)?;
+            generator_routes::generate_routes(&name , &routes);
+            // writer_routes::write_routes(&name, code)?;
             println!("{}", "Routes mises à jour".green());
         }
 
