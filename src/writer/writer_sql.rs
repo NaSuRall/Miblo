@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::env::{self};
-use std::fs::{File, create_dir};
+use std::fs::{File,create_dir_all};
 
 
 pub fn writer(
@@ -31,8 +31,8 @@ pub fn writer(
         for (model_name , content_method ) in content {
          
             let dir_name = sql_dir.join(model_name.to_lowercase());
-            create_dir(&dir_name)?; 
-            let file_name = format!("{}_{}.sql", method ,model_name.to_lowercase());
+            create_dir_all(&dir_name)?; 
+            let file_name = format!("{}.sql", method);
             let file_path = dir_name.join(&file_name);
             let mut file = File::create(file_path)?;
             let _ = file.write_all(content_method.as_bytes());

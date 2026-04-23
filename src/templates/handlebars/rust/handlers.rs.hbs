@@ -9,7 +9,7 @@ pub async fn get_{{ handler_name_low }}(State(state): State<AppState>) -> Json<V
   //  "SELECT * from {{ handler_name_low }} "
   // ).fetch_all(&state.db).await;
   
-  let res = sqlx::query_file_as!({{ handler_name}}, "{{ sql_path }}" )
+  let res = sqlx::query_file_as!({{ handler_name}}, "{{ sql_path_get }}" )
   .fetch_all(&state.db).await;
 
   match res {

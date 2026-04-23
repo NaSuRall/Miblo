@@ -35,8 +35,8 @@ pub fn generator(name: &str, models: &Vec<Value>) {
     
     let _ = writer_sql::writer(name ,get, post, patch, delete);
 
-    //println!("get : {:?}", get);
-    //println!("post: {:?}", post);
-    //println!("patch: {:?}", patch);
-    //println!("delete: {:?}", delete);
+    // println!("get : {:?}", get);
+    // println!("post: {:?}", post);
+    // println!("patch: {:?}", patch);
+    // println!("delete: {:?}", delete);
 }
