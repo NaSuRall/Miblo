@@ -1,8 +1,10 @@
+use std::path::PathBuf;
+
 use serde::Deserialize;
 use handlebars::Handlebars;
 use serde_json::json;
 
-use crate::writer::writer_routes;
+use crate::{cli::config::MibloConfig, writer::writer_routes};
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(dead_code)]
@@ -12,18 +14,21 @@ pub struct Route {
     pub path: String,
 }
 
-pub fn generate_routes(name: &str, routes: &[Route]) {
+pub fn generate_routes(project_path: &PathBuf, miblo_config: &MibloConfig) {
  
     let mut hbs = Handlebars::new();
+
+    let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("routes.rs.hbs");
+    println!("ICICICICICI : {:?}", template_path);
     hbs.register_template_file(
         "routes",
-        "src/templates/handlebars/rust/routes.rs.hbs"
+        template_path
     ).expect("Failed to register routes template");
     
     
 
     let data = json!({
-        "routes": routes.iter().map(|r| json!({
+        "routes": miblo_config.routes.iter().map(|r| json!({
             "path": r.path,
             "method": r.method.to_lowercase(),
             "model_low": r.model.to_lowercase(),
@@ -32,7 +37,7 @@ pub fn generate_routes(name: &str, routes: &[Route]) {
     });
     let code = hbs.render("routes", &data).expect("Erreur render routes");
 
-    let _ = writer_routes::write_routes(name, code);
+    let _ = writer_routes::write_routes(project_path, code);
 }
 
 fn capitalize(s: &str) -> String {

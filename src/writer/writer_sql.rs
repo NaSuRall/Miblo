@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::env::{self};
 use std::fs::{File,create_dir_all};
+use std::path::PathBuf;
 
 
 pub fn writer(
-    name: &str, 
+    project_path: &PathBuf, 
     get: Vec<(String, String)>,
     post: Vec<(String, String)>,
     patch: Vec<(String, String)>,
@@ -13,8 +14,8 @@ pub fn writer(
     -> Result<(), Box<dyn std::error::Error>>{
 
 
-    let current_dir = env::current_dir()?;
-    let project_path = current_dir.join(name);
+    // let current_dir = env::current_dir()?;
+    //let project_path = current_dir.join(name);
     let sql_dir = project_path.join("src/sql");
 
 

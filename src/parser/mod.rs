@@ -2,16 +2,16 @@ use serde_json::Value;
 use std::env;
 use std::path::PathBuf;
 
-pub fn reader_route(name: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    let current_dir: PathBuf = env::current_dir()?;
+pub fn reader_route(template_config: &PathBuf) -> Result<Value, Box<dyn std::error::Error>> {
+    // let current_dir: PathBuf = env::current_dir()?;
 
     // Aller dans l'api
-    let project_path: PathBuf = current_dir.join(name);
+    // let project_path: PathBuf = current_dir.join(name);
     // println!("project_path : {:?}", project_path);
 
     // Lire le fichier route.yaml
-    let route_file = project_path.join("route.yaml");
-    let reader = std::fs::File::open(route_file)?;
+    // let route_file = project_path.join("route.yaml");
+    let reader = std::fs::File::open(&template_config)?;
 
     // Récupérer les données YAML
     let data: serde_yaml::Value = serde_yaml::from_reader(reader)?;

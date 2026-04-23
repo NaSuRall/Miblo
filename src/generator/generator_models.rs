@@ -1,17 +1,19 @@
 use handlebars::Handlebars;
-use serde_json::{Value};
-use crate::engine::model_template::send_model_handelbars;
+use crate::{cli::config::MibloConfig, engine::model_template::send_model_handelbars};
 
- pub fn generate_model(models: &Vec<Value>) -> Vec<(String, String)> {
-   //let mut results = Vec::new();
+ pub fn generate_model(miblo_config: &MibloConfig) -> Vec<(String, String)> {
    let mut handlebars = Handlebars::new();
 
+
+
+   let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("model.rs.hbs");
+   println!("ICICICICI : {:?}", template_path);
    handlebars
-       .register_template_file("model", "src/templates/handlebars/rust/model.rs.hbs")
+       .register_template_file("model", &template_path)
        .expect("Failed to register template file for handlebars");
 
      
-   send_model_handelbars("model",None, models, &handlebars)
+   send_model_handelbars("model",None, &miblo_config.models, &handlebars)
    
 }
 

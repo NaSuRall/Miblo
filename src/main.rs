@@ -1,3 +1,3 @@
 fn main() {
-    let _ = miblo_cli::cli::lunch();
+    miblo_cli::cli::lunch();
 }

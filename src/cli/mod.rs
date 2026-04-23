@@ -1,6 +1,8 @@
 use std::env;
+use std::fs;
 use std::path::PathBuf;
-
+use std::process::exit;
+pub mod config;
 use crate::engine::fs::copy_dir_all;
 use crate::generator::generator_routes;
 use crate::generator::generator_template;
@@ -18,7 +20,7 @@ use colored::*;
 
 #[derive(Subcommand)]
 enum Commands {
-    Init { name: String },
+    Init { name: String, template_dir: PathBuf },
     Run { name: String },
     Generate { name: String },
     Export { name: String, destination: PathBuf }
@@ -35,29 +37,36 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init { name } => {
+        Commands::Init { name, template_dir } => {
             // Création du Dossier ( nom de l'api)
+            
+            // NOTE : RENDRE CELA VARIABLE 
             let current_dir = std::env::current_dir()?;
             let project_path = current_dir.join(&name);
             std::fs::create_dir_all(&project_path)?;
             // Récuperation du fichier ROUTE.YAML du template
             // et coller dans le dossier de l'api
-            let route_yaml_src = "src/templates/handlebars/rust/route.yaml";
-            let route_yaml_dest = project_path.join("route.yaml");
-            std::fs::copy(route_yaml_src, &route_yaml_dest)?;
+            if ! std::fs::exists(&template_dir)? {
+                return Err("Err de caca".into());
+            }
+            println!("gros caca");
+            
+
+            // let route_yaml_dest = project_path.join("route.yaml");
+            // std::fs::copy(route_yaml_src, &route_yaml_dest)?;
         
             // Lecture du Fichier Route.yaml 
-            let json_value = parser::reader_route(&name)?;
-            let (routes, models, database, server, auth) = generator_yaml::reader_json(json_value)?;
-
+            let json_value = parser::reader_route(&template_dir)?;
+            let miblo_config = generator_yaml::reader_json(template_dir.parent().unwrap().to_path_buf(), json_value)?;
+            println!("{:?}", miblo_config);
             // GENERATEUR DE STRUCTURE 
             // [ ROUTES , MODEL , HANDLERS , MIGRATION , SQL]
-            generator_template::generator(&name, database, server, auth)?;
-            generator_sqlx::generator(&name, &models);
-            writer_models::write_model(&name, &models)?;
-            generator_sql::generator(&name , &models); 
-            generator_routes::generate_routes(&name, &routes);
-            writer_handlers::write_handlers(&name, &models)?;
+            generator_template::generator(&project_path, &name, &miblo_config)?;
+            generator_sqlx::generator(&project_path, &miblo_config);
+            writer_models::write_model(&project_path, &miblo_config)?;
+            generator_sql::generator(&project_path , &miblo_config); 
+            generator_routes::generate_routes(&project_path, &miblo_config);
+            writer_handlers::write_handlers(&project_path, &miblo_config)?;
 
 
             println!("{}", "Structure de base générée [ MODELS, ROUTES, HANDLERS, ROUTE.YAML ]".green());
@@ -66,17 +75,17 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
 
         Commands::Generate { name } => {
             // Regénère uniquement models et routes pour l'instant et puis la suite plus tard
-            let json_value = parser::reader_route(&name)?;
-            println!("{}", "Lecture du fichier route.yaml....".yellow());
+            // let json_value = parser::reader_route(&name)?;
+            //println!("{}", "Lecture du fichier route.yaml....".yellow());
 
-            let (routes, models, _database, _server, _auth) = generator_yaml::reader_json(json_value)?;
+            // let (routes, models, _database, _server, _auth, _template_dir) = generator_yaml::reader_json(json_value)?;
 
-            writer_models::write_model(&name, &models)?;
-            println!("{}", "Models mis à jour".green());
+            //writer_models::write_model(&name, &models)?;
+            // println!("{}", "Models mis à jour".green());
 
-            generator_routes::generate_routes(&name , &routes);
+            // generator_routes::generate_routes(&name , &routes);
             // writer_routes::write_routes(&name, code)?;
-            println!("{}", "Routes mises à jour".green());
+            // println!("{}", "Routes mises à jour".green());
         }
 
         Commands::Run { name } => {

@@ -1,9 +1,11 @@
-use fs_extra::file::read_to_string;
-use handlebars::Handlebars;
-use serde_json::{json,Value};
-use std::env;
+use std::path::PathBuf;
 
-pub fn generate_handler(models: &Vec<Value> ,name: &str) -> Vec<(String, String)>{
+use handlebars::Handlebars;
+use serde_json::{json};
+
+use crate::cli::config::MibloConfig;
+
+pub fn generate_handler(miblo_config: &MibloConfig) -> Vec<(String, String)>{
     let mut results = Vec::new();
     let mut handlebars = Handlebars::new();
 
@@ -11,12 +13,14 @@ pub fn generate_handler(models: &Vec<Value> ,name: &str) -> Vec<(String, String)
     // let project_path = current_dir.join(name);
     // let sql_dir = project_path.join("src/sql"); 
     
+    let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("handlers.rs.hbs");
+    println!("ICICICICICI : {:?}", template_path);
 
     handlebars
-        .register_template_file("handlers", "src/templates/handlebars/rust/handlers.rs.hbs")
+        .register_template_file("handlers", template_path)
         .expect("Filed to register template file for handlebars...");
 
-    for model in models {
+    for model in &miblo_config.models {
         let name = model["name"].as_str().expect("Model name is not a string");
         let result = format!("{}{}", &name[..1].to_uppercase(), &name[1..]);
  

@@ -1,3 +1,6 @@
+# [ HANDLEBARS ]
+template_dir: "handlebars"
+
 # [ ROUTES ]
 route:
   - method: get

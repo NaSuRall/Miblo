@@ -1,13 +1,13 @@
 use std::io::Write;
-use std::env;
 use std::fs::{File};
-use serde_json::Value;
+use std::path::PathBuf;
+use crate::cli::config::MibloConfig;
 use crate::generator::generator_models::generate_model;
 
-pub fn write_model(name: &str, models: &Vec<Value>) ->  Result<(), Box<dyn std::error::Error>>{
+pub fn write_model(project_path: &PathBuf, miblo_config: &MibloConfig) ->  Result<(), Box<dyn std::error::Error>>{
 
-    let current_dir = env::current_dir()?;
-    let project_path = current_dir.join(name);
+    // let current_dir = env::current_dir()?;
+    //let project_path = current_dir.join(name);
     let model_dir = project_path.join("src/models");
 
     let mod_file_path = model_dir.join("mod.rs");
@@ -31,7 +31,7 @@ pub fn write_model(name: &str, models: &Vec<Value>) ->  Result<(), Box<dyn std::
         // Here model auto : 
     ")?;
 
-    let generated_models = generate_model(models);
+    let generated_models = generate_model(&miblo_config);
 
     for (model_name, content) in generated_models {
 
