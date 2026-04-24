@@ -1,7 +1,5 @@
 use std::env;
-use std::fs;
 use std::path::PathBuf;
-use std::process::exit;
 pub mod config;
 use crate::engine::fs::copy_dir_all;
 use crate::generator::generator_routes;
@@ -13,7 +11,6 @@ use crate::parser;
 use crate::runtime;
 use crate::writer::writer_handlers;
 use crate::writer::writer_models;
-use crate::writer::writer_routes;
 use clap::{Parser, Subcommand};
 use colored::*;
 
@@ -37,6 +34,8 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
+        // NAME : Nom du projet 
+        // TEMPLATE_DIR : chemin vers template a utiliser
         Commands::Init { name, template_dir } => {
             // Création du Dossier ( nom de l'api)
             
@@ -44,21 +43,16 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             let current_dir = std::env::current_dir()?;
             let project_path = current_dir.join(&name);
             std::fs::create_dir_all(&project_path)?;
-            // Récuperation du fichier ROUTE.YAML du template
-            // et coller dans le dossier de l'api
+            // Vérification si le fichier de l'api 
+            // a bien ete crée ou pas
             if ! std::fs::exists(&template_dir)? {
                 return Err("Err de caca".into());
             }
-            println!("gros caca");
-            
-
-            // let route_yaml_dest = project_path.join("route.yaml");
-            // std::fs::copy(route_yaml_src, &route_yaml_dest)?;
-        
+                    
             // Lecture du Fichier Route.yaml 
             let json_value = parser::reader_route(&template_dir)?;
             let miblo_config = generator_yaml::reader_json(template_dir.parent().unwrap().to_path_buf(), json_value)?;
-            println!("{:?}", miblo_config);
+
             // GENERATEUR DE STRUCTURE 
             // [ ROUTES , MODEL , HANDLERS , MIGRATION , SQL]
             generator_template::generator(&project_path, &name, &miblo_config)?;

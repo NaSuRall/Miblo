@@ -10,11 +10,7 @@ use crate::engine::model_template::send_model_handelbars;
 pub fn generator(project_path: &PathBuf, miblo_config: &MibloConfig)  {
 
     let mut handlebars = Handlebars::new();
-    // let current_dir = current_dir().expect("Impossible de lire le dossier");
-    // let project_path = current_dir.join(name);
-    //let mut results = Vec::new();
     
-
 
 
     let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("migration.sql.hbs");
@@ -22,13 +18,9 @@ pub fn generator(project_path: &PathBuf, miblo_config: &MibloConfig)  {
     let _ = handlebars.register_template_file("migration", &template_path);
 
 
-
-
-
-    
     let output = Command::new("sqlx")
         .args(["migrate", "add", "create_user"])
-        .current_dir(project_path) // important : exécuter dans le bon dossier
+        .current_dir(project_path)
         .output()
         .expect("Impossible de lancer sqlx");
 

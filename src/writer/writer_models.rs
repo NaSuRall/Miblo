@@ -6,18 +6,10 @@ use crate::generator::generator_models::generate_model;
 
 pub fn write_model(project_path: &PathBuf, miblo_config: &MibloConfig) ->  Result<(), Box<dyn std::error::Error>>{
 
-    // let current_dir = env::current_dir()?;
-    //let project_path = current_dir.join(name);
     let model_dir = project_path.join("src/models");
-
     let mod_file_path = model_dir.join("mod.rs");
     let mut mod_file = File::create(&mod_file_path)?;
 
-    // ouvrir mod.rs
-    //let mut mod_file = OpenOptions::new()
-    //    .create(true)
-    //    .append(true)
-    //    .open(mod_file_path)?;
     writeln!(mod_file, "
         pub mod claim;
         pub mod register;
@@ -31,7 +23,7 @@ pub fn write_model(project_path: &PathBuf, miblo_config: &MibloConfig) ->  Resul
         // Here model auto : 
     ")?;
 
-    let generated_models = generate_model(&miblo_config);
+    let generated_models = generate_model(miblo_config);
 
     for (model_name, content) in generated_models {
 
@@ -45,8 +37,6 @@ pub fn write_model(project_path: &PathBuf, miblo_config: &MibloConfig) ->  Resul
         file.write_all(content.as_bytes())?;
 
         // ajoute dans mod.rs
-        
-
         writeln!(mod_file, "pub mod {};", model_name.to_lowercase())?;
         writeln!(mod_file, "pub use {}::{};", model_name.to_lowercase(), model_name_up)?;
 

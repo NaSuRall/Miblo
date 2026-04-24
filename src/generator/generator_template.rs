@@ -1,6 +1,5 @@
 use handlebars::Handlebars;
 use serde_json::{json, Value};
-use std::env;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -11,17 +10,11 @@ use crate::cli::config::MibloConfig;
 pub fn generator(
     project_path: &PathBuf,
     name: &str,
-    /*database: Vec<Value>,
-    server: Vec<Value>,
-    auth: bool,
-    template_dir: String */ 
     miblo_config: &MibloConfig
-
-
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Grace a miblo_config je peux recuprer tout la config directement
+    // dans la variable miblo_config
     let mut hbs = Handlebars::new();
-
-
     // fs::create_dir_all(project_path.join("src/models"))?;
     fs::create_dir_all(project_path.join("src/routes"))?;
     // fs::create_dir_all(project_path.join("src/handlers"))?;
@@ -50,27 +43,19 @@ pub fn generator(
     render_and_write(&mut hbs, "src/models/register.rs", "register_model.rs.hbs", &data, project_path ,miblo_config)?;
     render_and_write(&mut hbs, "src/models/login.rs", "login_model.rs.hbs", &data, project_path ,miblo_config)?;
 
-
-    //render_and_write(&mut hbs, "src/routes","", &data, project_path ,miblo_config)?;
-    //render_and_write(&mut hbs, "src/sql","", &data, project_path ,miblo_config)?;
-
-
-
-
     Ok(())
 }
 
 fn render_and_write( hbs: &mut Handlebars,output: &str,template_file: &str,data: &Value,base: &Path, miblo_config: &MibloConfig)
  -> Result<(), Box<dyn std::error::Error>> {
     //let TEMPLATE_DIR: &str = "src/templates/handlebars/rust";
-    //
-    //
     // println!("{:?}, {:?}, {}", miblo_config.config_dir, miblo_config.template_dir, template_file);
     // let template_path = format!("{:?}/{}", &miblo_config.template_dir, template_file);
+    //
+    // Grace au miblo_config je peux mettre le config_dir puis le template_dir 
+    // ce que si on les met ensemble donne le lien direct au fichier du template 
     let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join(template_file);
-    println!("ICIICICI : {:?}", template_path);
-    
-
+    // println!("TEMPLATE : {:?}", template_path);
     hbs.register_template_file(template_file, &template_path)?;
     let rendered = hbs.render(template_file, data)?;
     let destination = base.join(output);
