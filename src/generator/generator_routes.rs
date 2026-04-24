@@ -19,7 +19,6 @@ pub fn generate_routes(project_path: &PathBuf, miblo_config: &MibloConfig) {
     let mut hbs = Handlebars::new();
 
     let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("routes.rs.hbs");
-    println!("ICICICICICI : {:?}", template_path);
     hbs.register_template_file(
         "routes",
         template_path

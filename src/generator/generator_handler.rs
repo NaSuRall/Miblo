@@ -9,12 +9,8 @@ pub fn generate_handler(miblo_config: &MibloConfig) -> Vec<(String, String)>{
     let mut results = Vec::new();
     let mut handlebars = Handlebars::new();
 
-    // let current_dir = env::current_dir().expect("Impossible te trouver le dossier ");
-    // let project_path = current_dir.join(name);
-    // let sql_dir = project_path.join("src/sql"); 
     
     let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("handlers.rs.hbs");
-    println!("ICICICICICI : {:?}", template_path);
 
     handlebars
         .register_template_file("handlers", template_path)
