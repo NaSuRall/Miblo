@@ -14,7 +14,7 @@ pub fn generator(project_path: &PathBuf, miblo_config: &MibloConfig)  {
 
 
     let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("migration.sql.hbs");
-    println!("CACAACACA {:?}", template_path);
+    // println!("CACAACACA {:?}", template_path);
     let _ = handlebars.register_template_file("migration", &template_path);
 
 
