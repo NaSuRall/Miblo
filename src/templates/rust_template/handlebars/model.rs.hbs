@@ -1,8 +1,0 @@
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct {{ model_name_up }} {
-    {{#each fields}}
-        pub {{ name }}: {{ type }},
-    {{/each}}
-}

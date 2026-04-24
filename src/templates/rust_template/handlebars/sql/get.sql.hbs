@@ -1,4 +1,0 @@
-SELECT 
-{{#each fields}}{{ name }} AS "{{ name }}!"   {{#unless @last}},{{/unless}}{{/each}}
-FROM
-{{ model_name }}
