@@ -14,10 +14,12 @@ pub fn reader_json(
     let auth = json["auth"].as_bool().expect("Auth n'a pas ete recuperer");
     let template_dir = json["template_dir"].as_str().unwrap().to_string();
     
+    print!("{:?}", routes);
     // Mettre les donnes du json dans le Struct MibloConfig
     Ok(MibloConfig {
         models: models.clone(),
-        routes, server: server.clone(),
+        routes,
+        server: server.clone(),
         database: database.to_vec(),
         auth, 
         template_dir,

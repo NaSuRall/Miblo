@@ -39,6 +39,7 @@ pub fn write_model(project_path: &PathBuf, miblo_config: &MibloConfig) ->  Resul
         // ajoute dans mod.rs
         writeln!(mod_file, "pub mod {};", model_name.to_lowercase())?;
         writeln!(mod_file, "pub use {}::{};", model_name.to_lowercase(), model_name_up)?;
+       //  writeln!(mod_file, "pub use {}::Delete{};", model_name.to_lowercase(), model_name_up)?;
 
     }
     Ok(())
