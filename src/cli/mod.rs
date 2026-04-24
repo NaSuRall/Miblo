@@ -17,7 +17,12 @@ use colored::*;
 
 #[derive(Subcommand)]
 enum Commands {
-    Init { name: String, template_dir: PathBuf },
+    Init { 
+        #[arg(short, long)]
+        name: String, 
+        #[arg(short, long)]
+        template_dir: PathBuf
+    },
     Run { name: String },
     Generate { name: String },
     Export { name: String, destination: PathBuf }
