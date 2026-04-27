@@ -8,13 +8,13 @@ pub fn reader_json(
     json: Value,
 ) -> Result< MibloConfig , Box<dyn Error>> {
     let routes = serde_json::from_value(json["route"].clone())?;
-    let models = json["models"].as_array().expect("");
-    let server = json["server"].as_array().expect("");
-    let database = json["database"].as_array().expect("");
-    let auth = json["auth"].as_bool().expect("Auth n'a pas ete recuperer");
+    let models = json["models"].as_array().expect("Error, models not found !");
+    let server = json["server"].as_array().expect("Error, server not found !");
+    let database = json["database"].as_array().expect("Error, database not found !");
+    let auth = json["auth"].as_bool().expect("Error, auth not found");
     let template_dir = json["template_dir"].as_str().unwrap().to_string();
-    
-    print!("{:?}", routes);
+    let language = json["language"].as_str().unwrap().to_string();
+
     // Mettre les donnes du json dans le Struct MibloConfig
     Ok(MibloConfig {
         models: models.clone(),
@@ -23,7 +23,8 @@ pub fn reader_json(
         database: database.to_vec(),
         auth, 
         template_dir,
-        config_dir
+        config_dir,
+        language
     })
 }
 

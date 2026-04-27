@@ -26,9 +26,6 @@ enum Commands {
     Run {
         name: String,
     },
-    Generate {
-        name: String,
-    },
     Export {
         name: String,
         destination: PathBuf,
@@ -57,7 +54,7 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             // Vérification si le fichier de l'api
             // a bien ete crée ou pas
             if !std::fs::exists(&template_dir)? {
-                return Err("Err de caca".into());
+                return Err("Folder not find !".into());
             }
 
             // Lecture du Fichier Route.yaml
@@ -78,24 +75,9 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
 
             println!(
                 "{}",
-                "Structure de base générée [ MODELS, ROUTES, HANDLERS, ROUTE.YAML ]".green()
+                "Miblo generate api for you ! \n You can 'miblo run (folder api name )'".green()
             );
-            println!("{}", "Vous pouvez maintenant acceder a au fichier [route.yaml] pour y modifier les données !".yellow());
-        }
 
-        Commands::Generate { name } => {
-            // Regénère uniquement models et routes pour l'instant et puis la suite plus tard
-            // let json_value = parser::reader_route(&name)?;
-            //println!("{}", "Lecture du fichier route.yaml....".yellow());
-
-            // let (routes, models, _database, _server, _auth, _template_dir) = generator_yaml::reader_json(json_value)?;
-
-            //writer_models::write_model(&name, &models)?;
-            // println!("{}", "Models mis à jour".green());
-
-            // generator_routes::generate_routes(&name , &routes);
-            // writer_routes::write_routes(&name, code)?;
-            // println!("{}", "Routes mises à jour".green());
         }
 
         Commands::Run { name } => {

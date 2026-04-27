@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use serde::Deserialize;
 use handlebars::Handlebars;
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::{cli::config::MibloConfig, writer::writer_routes};
@@ -15,16 +15,14 @@ pub struct Route {
 }
 
 pub fn generate_routes(project_path: &PathBuf, miblo_config: &MibloConfig) {
- 
     let mut hbs = Handlebars::new();
 
-    let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("routes.rs.hbs");
-    hbs.register_template_file(
-        "routes",
-        template_path
-    ).expect("Failed to register routes template");
-    
-    
+    let template_path = miblo_config
+        .config_dir
+        .join(&miblo_config.template_dir)
+        .join("routes.rs.hbs");
+    hbs.register_template_file("routes", template_path)
+        .expect("Failed to register routes template");
 
     let data = json!({
         "routes": miblo_config.routes.iter().map(|r| json!({
@@ -36,7 +34,7 @@ pub fn generate_routes(project_path: &PathBuf, miblo_config: &MibloConfig) {
     });
     let code = hbs.render("routes", &data).expect("Erreur render routes");
 
-    let _ = writer_routes::write_routes(project_path, code);
+    let _ = writer_routes::write_routes(project_path, code, &miblo_config);
 }
 
 fn capitalize(s: &str) -> String {

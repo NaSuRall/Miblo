@@ -12,7 +12,8 @@ pub struct MibloConfig {
     pub database: Vec<Value>,
     pub auth: bool,
     pub template_dir: String,
-    pub config_dir: PathBuf
+    pub config_dir: PathBuf,
+    pub language: String
 } 
 
 /*
