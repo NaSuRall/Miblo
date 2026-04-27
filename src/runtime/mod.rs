@@ -1,26 +1,23 @@
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::env::current_dir;
-use std::io::BufRead;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub fn runtime(name: String) -> Result<(), Box<dyn std::error::Error>> {
-    let spinner = ProgressBar::new_spinner();
+    let spinner = Arc::new(ProgressBar::new_spinner());
     spinner.set_style(
         ProgressStyle::default_spinner()
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
             .template("{spinner:.cyan} {msg}")
             .unwrap(),
     );
-
     spinner.enable_steady_tick(Duration::from_millis(80));
-    spinner.set_message(" Compilation des dépendances...");
+    spinner.set_message("Compilation des dépendances...");
 
-    // Lancer le serveur web axum de l'API générer
     let current_dir = current_dir().expect("Impossible de trouver le dossier current");
-
     let project_path = current_dir.join(&name);
 
     let _command = Command::new("sqlx")
@@ -32,10 +29,22 @@ pub fn runtime(name: String) -> Result<(), Box<dyn std::error::Error>> {
         .arg("run")
         .current_dir(&project_path)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()?;
 
     let stdout = start.stdout.take().unwrap();
+    let stderr = start.stderr.take().unwrap();
+
+    let spinner_stderr = Arc::clone(&spinner);
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines() {
+            let Ok(line) = line else { break };
+            if line.contains("Compiling") {
+                spinner_stderr.set_message(format!("{}", style(line.trim()).dim()));
+            }
+        }
+    });
+
     for line in BufReader::new(stdout).lines() {
         let line = line?;
         if line.contains("Server running on") {
