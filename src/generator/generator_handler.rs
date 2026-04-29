@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use handlebars::Handlebars;
 use serde_json::{json};
 
@@ -9,7 +7,7 @@ pub fn generate_handler(miblo_config: &MibloConfig) -> Vec<(String, String)>{
     let mut results = Vec::new();
     let mut handlebars = Handlebars::new();
 
-    
+
     let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("handlers.rs.hbs");
 
     handlebars
@@ -18,14 +16,22 @@ pub fn generate_handler(miblo_config: &MibloConfig) -> Vec<(String, String)>{
 
     for model in &miblo_config.models {
         let name = model["name"].as_str().expect("Model name is not a string");
+        let fields = model["fields"].as_array().expect("Fields not found");
         let result = format!("{}{}", &name[..1].to_uppercase(), &name[1..]);
- 
 
         let sql_get    = format!("src/sql/{}/get.sql", name.to_lowercase());
         let sql_post   = format!("src/sql/{}/post.sql", name.to_lowercase());
         let sql_delete = format!("src/sql/{}/delete.sql", name.to_lowercase());
         let sql_patch  = format!("src/sql/{}/patch.sql", name.to_lowercase());
 
+        let mut field_names = Vec::new();
+
+        for field in fields {
+            let field_name = field["name"].as_str().expect("field type");
+            field_names.push(json!({
+                   "name": field_name,
+            }));
+        }
 
         let data = json!({
             "handler_name": result,
@@ -33,7 +39,8 @@ pub fn generate_handler(miblo_config: &MibloConfig) -> Vec<(String, String)>{
             "sql_path_get": sql_get,
             "sql_path_post": sql_post,
             "sql_path_delete": sql_delete,
-            "sql_path_patch": sql_patch
+            "sql_path_patch": sql_patch,
+            "fields_name": field_names
         });
 
         let rendered = handlebars

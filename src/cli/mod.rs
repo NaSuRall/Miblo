@@ -14,6 +14,7 @@ use crate::writer::writer_handlers;
 use crate::writer::writer_models;
 use clap::{Parser, Subcommand};
 use colored::*;
+use console::style;
 
 #[derive(Subcommand)]
 enum Commands {
@@ -33,7 +34,7 @@ enum Commands {
 }
 
 #[derive(Parser)]
-#[command(name = "miblo", about = "CLI pour générer des API")]
+#[command(name = "Miblo", about = "Générate API Rust")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -73,10 +74,8 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             generator_routes::generate_routes(&project_path, &miblo_config);
             writer_handlers::write_handlers(&project_path, &miblo_config)?;
 
-            println!(
-                "{}",
-                "Miblo generate api for you ! \n You can 'miblo run (folder api name )'".green()
-            );
+            println!("{}", style("Miblo generate api for you !").green());
+            println!("{} {}", style("run : miblo run").blue(), name.blue());
 
         }
 
