@@ -48,6 +48,8 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
         // TEMPLATE_DIR : chemin vers template a utiliser
         Commands::Init { name, template_dir } => {
             // NOTE : RENDRE CELA VARIABLE
+            // NOTE : rendre les route variable en fonction
+            // des methodes du model
             let current_dir = std::env::current_dir()?;
             let project_path = current_dir.join(&name);
             request_cretate_folder(&project_path)?;

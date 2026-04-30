@@ -17,8 +17,15 @@ pub fn generate_handler(miblo_config: &MibloConfig) -> Vec<(String, String)>{
     for model in &miblo_config.models {
         let name = model["name"].as_str().expect("Model name is not a string");
         let fields = model["fields"].as_array().expect("Fields not found");
-        let result = format!("{}{}", &name[..1].to_uppercase(), &name[1..]);
+        let methods = model["method"].as_array().expect("method not found");
 
+        let has_get = methods.iter().any(|m| m == "get");
+        let has_post = methods.iter().any(|m| m == "post");
+        let has_patch = methods.iter().any(|m| m == "patch");
+        let has_delete = methods.iter().any(|m| m == "delete");
+
+
+        let result = format!("{}{}", &name[..1].to_uppercase(), &name[1..]);
         let sql_get    = format!("src/sql/{}/get.sql", name.to_lowercase());
         let sql_post   = format!("src/sql/{}/post.sql", name.to_lowercase());
         let sql_delete = format!("src/sql/{}/delete.sql", name.to_lowercase());
@@ -40,7 +47,11 @@ pub fn generate_handler(miblo_config: &MibloConfig) -> Vec<(String, String)>{
             "sql_path_post": sql_post,
             "sql_path_delete": sql_delete,
             "sql_path_patch": sql_patch,
-            "fields_name": field_names
+            "fields_name": field_names,
+            "method_get": has_get,
+            "method_post": has_post,
+            "method_patch": has_patch,
+            "method_delete": has_delete
         });
 
         let rendered = handlebars
