@@ -47,7 +47,6 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
         // NAME : Nom du projet
         // TEMPLATE_DIR : chemin vers template a utiliser
         Commands::Init { name, template_dir } => {
-            // NOTE : RENDRE CELA VARIABLE
             // NOTE : rendre les route variable en fonction
             // des methodes du model
             let current_dir = std::env::current_dir()?;
@@ -61,20 +60,23 @@ pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Lecture du Fichier Route.yaml
-            let json_value = parser::reader_route(&template_dir)?;
+            let json_value = parser::reader_route(&template_dir).expect("Failed to read config.yaml...");
+            // ajouter verification config.yaml
+            let verified_json_value = parser::verify_config(&json_value).expect("Failed to verify config.yaml...");
+            //
             let miblo_config = generator_yaml::reader_json(
                 template_dir.parent().unwrap().to_path_buf(),
-                json_value,
+                verified_json_value,
             )?;
 
             // GENERATEUR DE STRUCTURE
             // [ ROUTES , MODEL , HANDLERS , MIGRATION , SQL]
-            generator_template::generator(&project_path, &name, &miblo_config)?;
+            generator_template::generator(&project_path, &name, &miblo_config).expect("Failed to generate struct base...");
             generator_sqlx::generator(&project_path, &miblo_config);
-            writer_models::write_model(&project_path, &miblo_config)?;
+            writer_models::write_model(&project_path, &miblo_config).expect("Failed to write models...");
             generator_sql::generator(&project_path, &miblo_config);
             generator_routes::generate_routes(&project_path, &miblo_config);
-            writer_handlers::write_handlers(&project_path, &miblo_config)?;
+            writer_handlers::write_handlers(&project_path, &miblo_config).expect("Failed to write handlers...");
 
             println!("{}", style("Miblo generate api for you !").green());
             println!("{} {}", style("run : miblo run").blue(), name.blue());

@@ -17,6 +17,16 @@ pub struct Route {
 pub fn generate_routes(project_path: &PathBuf, miblo_config: &MibloConfig) {
     let mut hbs = Handlebars::new();
 
+    // NOTE: j'ai mis les method des models pour handlebars
+    // faire la route si la method est la sinon non
+    let models = miblo_config.models.clone();
+    let methods: Vec<&str> = models[0]["method"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+
     let template_path = miblo_config
         .config_dir
         .join(&miblo_config.template_dir)
@@ -29,12 +39,13 @@ pub fn generate_routes(project_path: &PathBuf, miblo_config: &MibloConfig) {
             "path": r.path,
             "method": r.method.to_lowercase(),
             "model_low": r.model.to_lowercase(),
-            "model": capitalize(&r.model)
+            "model": capitalize(&r.model),
+            "methods": methods
         })).collect::<Vec<_>>()
     });
     let code = hbs.render("routes", &data).expect("Erreur render routes");
 
-    let _ = writer_routes::write_routes(project_path, code, &miblo_config);
+    let _ = writer_routes::write_routes(project_path, code, miblo_config);
 }
 
 fn capitalize(s: &str) -> String {
