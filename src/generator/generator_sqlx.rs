@@ -12,7 +12,7 @@ pub fn generate(project_path: &PathBuf, miblo_config: &MibloConfig) -> Result<()
     let mut hbs = Handlebars::new();
 
     let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join("migration.sql.hbs");
-    hbs.register_template_file("migration", &template_path);
+    hbs.register_template_file("migration", &template_path)?;
 
     let output = Command::new("sqlx")
         .args(["migrate", "add", "init_database"])

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use crate::engine::create_folder;
+use crate::generator::generator_models;
 use crate::generator::generator_sqlx;
 use crate::generator::generator_tempalte;
 use crate::parser::config_reader;
@@ -42,6 +43,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // GENERATEUR CODE
             generator_tempalte::template(&project_path, &name, &miblo_config).expect("failed to create template file");
             generator_sqlx::generate(&project_path, &miblo_config)?;
+            generator_models::generate(&project_path, &miblo_config)?;
         }
     }
     Ok(())
