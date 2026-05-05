@@ -6,6 +6,7 @@ use crate::engine::handlebars_model::send_model_handlebars;
 
 use crate::cli::config::MibloConfig;
 use crate::engine::type_rust::map_type_sql;
+use crate::writer::writer_migration;
 
 pub fn generate(project_path: &PathBuf, miblo_config: &MibloConfig) -> Result<(), Box<dyn Error>> {
 
@@ -27,6 +28,8 @@ pub fn generate(project_path: &PathBuf, miblo_config: &MibloConfig) -> Result<()
     let res = send_model_handlebars("migration", Some(map_type_sql), &miblo_config.models, &hbs);
 
     // write migration  writer (migration_dir, res);
+    writer_migration::write_migration(&migration_dir, res)?;
+
 
     Ok(())
 }
