@@ -1,101 +1,47 @@
-use std::env;
 use std::path::PathBuf;
-pub mod config;
-use crate::engine::fs::copy_dir_all;
-use crate::engine::global_fn::request_cretate_folder;
-use crate::generator::generator_routes;
-use crate::generator::generator_sql;
-use crate::generator::generator_sqlx;
-use crate::generator::generator_template;
-use crate::generator::generator_yaml;
-use crate::parser;
-use crate::runtime;
-use crate::writer::writer_handlers;
-use crate::writer::writer_models;
 use clap::{Parser, Subcommand};
-use colored::*;
-use console::style;
+use crate::engine::create_folder;
+use crate::generator::generator_sqlx;
+use crate::generator::generator_tempalte;
+use crate::parser::config_reader;
+use crate::parser::reader_yaml;
+pub mod config;
 
 #[derive(Subcommand)]
-enum Commands {
+enum Command {
     Init {
         #[arg(short, long)]
         name: String,
         #[arg(short, long)]
         template_dir: PathBuf,
-    },
-    Run {
-        name: String,
-    },
-    Export {
-        name: String,
-        destination: PathBuf,
-    },
+    }
 }
 
 #[derive(Parser)]
-#[command(name = "Miblo", about = "Générate API Rust")]
+#[command(name = "miblo",about = "Génerate Api Rust")]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Command,
 }
 
-pub fn lunch() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-
-    match cli.command {
-        // NAME : Nom du projet
-        // TEMPLATE_DIR : chemin vers template a utiliser
-        Commands::Init { name, template_dir } => {
-            // NOTE : rendre les route variable en fonction
-            // des methodes du model
-            let current_dir = std::env::current_dir()?;
+    match &cli.command {
+        Command::Init { name, template_dir } => {
+            // CREATION DU FICHIER
+            let current_dir = std::env::current_dir().expect("Failed to get current dir !");
             let project_path = current_dir.join(&name);
-            request_cretate_folder(&project_path)?;
-
-            // Vérification si le fichier de l'api
-            // a bien ete crée ou pas
-            if !std::fs::exists(&template_dir)? {
-                return Err("Folder not find !".into());
+            create_folder::request_create_folder(&project_path)?;
+            if !std::fs::exists(&template_dir).expect("Folder not find"){
+                return Err("Folder not find".into());
             }
+            // LECTURE DU CONFIG.YAML
+            let config_value =  config_reader::reader(&template_dir).expect("Failed to read your config template");
+            let miblo_config = reader_yaml::reader(template_dir.parent().unwrap().to_path_buf(), config_value)?;
 
-            // Lecture du Fichier Route.yaml
-            let json_value = parser::reader_route(&template_dir).expect("Failed to read config.yaml...");
-            // ajouter verification config.yaml
-            let verified_json_value = parser::verify_config(&json_value).expect("Failed to verify config.yaml...");
-            //
-            let miblo_config = generator_yaml::reader_json(
-                template_dir.parent().unwrap().to_path_buf(),
-                verified_json_value,
-            )?;
-
-            // GENERATEUR DE STRUCTURE
-            // [ ROUTES , MODEL , HANDLERS , MIGRATION , SQL]
-            generator_template::generator(&project_path, &name, &miblo_config).expect("Failed to generate struct base...");
-            generator_sqlx::generator(&project_path, &miblo_config);
-            writer_models::write_model(&project_path, &miblo_config).expect("Failed to write models...");
-            generator_sql::generator(&project_path, &miblo_config);
-            generator_routes::generate_routes(&project_path, &miblo_config);
-            writer_handlers::write_handlers(&project_path, &miblo_config).expect("Failed to write handlers...");
-
-            println!("{}", style("Miblo generate api for you !").green());
-            println!("{} {}", style("run : miblo run").blue(), name.blue());
-
-        }
-
-        Commands::Run { name } => {
-            let _ = runtime::runtime(name);
-        }
-
-        Commands::Export { name, destination } => {
-            // trouver le chemin de l'api generer
-            let current_dir = env::current_dir()?;
-            let project_path = current_dir.join(name);
-            println!("PROJECT PATH : {:?}", project_path);
-            // copier tout les fichier et dossier de l'api
-            copy_dir_all(&project_path, &destination)?;
-            println!("{}", "Project export OK".green());
-            // coller tout les fichier vers le chemin demander
+            // GENERATEUR CODE
+            generator_tempalte::template(&project_path, &name, &miblo_config).expect("failed to create template file");
+            generator_sqlx::generate(&project_path, &miblo_config)?;
         }
     }
     Ok(())

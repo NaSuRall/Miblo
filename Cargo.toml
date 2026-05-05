@@ -1,26 +1,5 @@
-
-[lib]
-name = "miblo_cli"
-path = "src/lib.rs"
-
-[[bin]]
-name = "miblo_cli"
-path = "src/main.rs"
-
-
-
-[profile.dev]
-opt-level = 0
-debug = 1
-incremental = true
-codegen-units = 256
-
-[profile.dev.package."*"]
-opt-level = 3
-
-
 [package]
-name = "miblo_cli"
+name = "miblo_cli_v2"
 version = "0.1.0"
 edition = "2024"
 
@@ -33,5 +12,6 @@ include_dir = "0.7.4"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 serde_yaml = "0.9.34"
-indicatif = "0.17"
-console = "0.15"
+indicatif = "0.18.4"
+console = "0.16.3"
+console-utils = "1.8.2"

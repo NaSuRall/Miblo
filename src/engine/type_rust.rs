@@ -1,16 +1,3 @@
-use colored::*;
-use std::path::PathBuf;
-pub fn request_cretate_folder(project_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    println!("{}", "Create your api folder here ? y/n ".green());
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    if input.trim() != "y" {
-        return Err("Aborted".into());
-    }
-    std::fs::create_dir_all(project_path)?;
-    Ok(())
-}
-
 pub fn map_type(t: &str) -> &str {
     match t {
         "String" | "string" => "String",
