@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use colored::*;
 use console_utils::input::select;
 
 pub fn request_create_folder(project_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {

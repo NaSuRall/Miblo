@@ -1,4 +1,4 @@
-use std::{error::Error, process::Output};
+use std::{error::Error};
 use std::process::Command;
 use handlebars::Handlebars;
 use std::path::PathBuf;
