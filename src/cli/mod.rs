@@ -1,12 +1,13 @@
-use std::path::PathBuf;
-use clap::{Parser, Subcommand};
 use crate::engine::create_folder;
 use crate::generator::generator_models;
+use crate::generator::generator_routes;
 use crate::generator::generator_sql;
 use crate::generator::generator_sqlx;
 use crate::generator::generator_tempalte;
 use crate::parser::config_reader;
 use crate::parser::reader_yaml;
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 pub mod config;
 
 #[derive(Subcommand)]
@@ -16,11 +17,11 @@ enum Command {
         name: String,
         #[arg(short, long)]
         template_dir: PathBuf,
-    }
+    },
 }
 
 #[derive(Parser)]
-#[command(name = "miblo",about = "Génerate Api Rust")]
+#[command(name = "miblo", about = "Génerate Api Rust")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -32,20 +33,24 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::Init { name, template_dir } => {
             // CREATION DU FICHIER
             let current_dir = std::env::current_dir().expect("Failed to get current dir !");
-            let project_path = current_dir.join(&name);
+            let project_path = current_dir.join(name);
             create_folder::request_create_folder(&project_path)?;
-            if !std::fs::exists(&template_dir).expect("Folder not find"){
+            if !std::fs::exists(template_dir).expect("Folder not find") {
                 return Err("Folder not find".into());
             }
             // LECTURE DU CONFIG.YAML
-            let config_value =  config_reader::reader(&template_dir).expect("Failed to read your config template");
-            let miblo_config = reader_yaml::reader(template_dir.parent().unwrap().to_path_buf(), config_value)?;
+            let config_value =
+                config_reader::reader(template_dir).expect("Failed to read your config template");
+            let miblo_config =
+                reader_yaml::reader(template_dir.parent().unwrap().to_path_buf(), config_value)?;
 
             // GENERATEUR CODE
-            generator_tempalte::template(&project_path, &name, &miblo_config).expect("failed to create template file");
+            generator_tempalte::template(&project_path, name, &miblo_config)
+                .expect("failed to create template file");
             generator_sqlx::generate(&project_path, &miblo_config)?;
             generator_models::generate(&project_path, &miblo_config)?;
             generator_sql::generate(&project_path, &miblo_config)?;
+            generator_routes::generate(&project_path, &miblo_config)?;
         }
     }
     Ok(())
