@@ -1,4 +1,5 @@
 use crate::engine::create_folder;
+use crate::generator::generator_handlers;
 use crate::generator::generator_models;
 use crate::generator::generator_routes;
 use crate::generator::generator_sql;
@@ -44,13 +45,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let miblo_config =
                 reader_yaml::reader(template_dir.parent().unwrap().to_path_buf(), config_value)?;
 
+
+
             // GENERATEUR CODE
-            generator_tempalte::template(&project_path, name, &miblo_config)
-                .expect("failed to create template file");
+            generator_tempalte::template(&project_path, name, &miblo_config)?;
             generator_sqlx::generate(&project_path, &miblo_config)?;
             generator_models::generate(&project_path, &miblo_config)?;
             generator_sql::generate(&project_path, &miblo_config)?;
             generator_routes::generate(&project_path, &miblo_config)?;
+            generator_handlers::generate(&project_path, &miblo_config)?;
         }
     }
     Ok(())

@@ -20,7 +20,7 @@ pub fn generate(project_path: &PathBuf, miblo_config: &MibloConfig) -> Result<()
         "routes": miblo_config.routes.iter().map(|r| json!({
             "path": r.path,
             "method": r.method,
-            "model_low": r.method.to_lowercase(),
+            "model_low": r.model.to_lowercase(),
             "model": capitalize(&r.model),
 
         })).collect::<Vec<_>>()

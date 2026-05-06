@@ -23,10 +23,11 @@ pub fn template( project_path: &Path, name: &str, miblo_config: &MibloConfig )->
 
     let db = &miblo_config.database[0];
     let server = &miblo_config.server[0];
+
     let data = json!({
         "project_name": name,
         "server_port": server.port,
-        "server_address": server.adress,
+        "server_address": server.address,
         "auth": miblo_config.auth,
         "db_host": db.DB_HOST,
         "db_port": db.DB_PORT,
@@ -42,6 +43,9 @@ pub fn template( project_path: &Path, name: &str, miblo_config: &MibloConfig )->
         (".env", ".env.hbs"),
         ("src/handlers/login.rs", "login.rs.hbs"),
         ("src/handlers/register.rs", "register.rs.hbs"),
+        ("src/models/claim.rs", "claim.rs.hbs"),
+        ("src/models/register.rs", "register_model.rs.hbs"),
+        ("src/models/login.rs", "login_model.rs.hbs")
     ];
     for (output, template) in templates {
         render_and_write(&mut hbs, output, template, &data, project_path, miblo_config)?;
