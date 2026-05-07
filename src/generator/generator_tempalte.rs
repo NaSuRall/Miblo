@@ -1,12 +1,16 @@
-use std::path::Path;
-use std::error::Error;
 use handlebars::Handlebars;
+use serde_json::{Value, json};
+use std::error::Error;
 use std::fs;
-use serde_json::{json, Value};
+use std::path::Path;
 
 use crate::cli::config::MibloConfig;
 
-pub fn template( project_path: &Path, name: &str, miblo_config: &MibloConfig )-> Result<(), Box<dyn Error>> {
+pub fn template(
+    project_path: &Path,
+    name: &str,
+    miblo_config: &MibloConfig,
+) -> Result<(), Box<dyn Error>> {
     let mut hbs = Handlebars::new();
 
     let dirs = [
@@ -29,11 +33,11 @@ pub fn template( project_path: &Path, name: &str, miblo_config: &MibloConfig )->
         "server_port": server.port,
         "server_address": server.address,
         "auth": miblo_config.auth,
-        "db_host": db.DB_HOST,
-        "db_port": db.DB_PORT,
-        "db_database": db.DB_DATABASE,
-        "db_username": db.DB_USERNAME,
-        "db_password": db.DB_PASSWORD,
+        "db_host": db.db_host,
+        "db_port": db.db_port,
+        "db_database": db.db_database,
+        "db_username": db.db_username,
+        "db_password": db.db_password,
     });
 
     let templates = [
@@ -45,20 +49,34 @@ pub fn template( project_path: &Path, name: &str, miblo_config: &MibloConfig )->
         ("src/handlers/register.rs", "register.rs.hbs"),
         ("src/models/claim.rs", "claim.rs.hbs"),
         ("src/models/register.rs", "register_model.rs.hbs"),
-        ("src/models/login.rs", "login_model.rs.hbs")
+        ("src/models/login.rs", "login_model.rs.hbs"),
     ];
     for (output, template) in templates {
-        render_and_write(&mut hbs, output, template, &data, project_path, miblo_config)?;
+        render_and_write(
+            &mut hbs,
+            output,
+            template,
+            &data,
+            project_path,
+            miblo_config,
+        )?;
     }
 
     Ok(())
 }
 
-
-fn render_and_write( hbs: &mut Handlebars,output: &str,template_file: &str,data: &Value,base: &Path, miblo_config: &MibloConfig)
- -> Result<(), Box<dyn std::error::Error>> {
-
-    let template_path = miblo_config.config_dir.join(&miblo_config.template_dir).join(template_file);
+fn render_and_write(
+    hbs: &mut Handlebars,
+    output: &str,
+    template_file: &str,
+    data: &Value,
+    base: &Path,
+    miblo_config: &MibloConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let template_path = miblo_config
+        .config_dir
+        .join(&miblo_config.template_dir)
+        .join(template_file);
     hbs.register_template_file(template_file, &template_path)?;
     let rendered = hbs.render(template_file, data)?;
     let destination = base.join(output);
