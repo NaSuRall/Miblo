@@ -7,6 +7,7 @@ use crate::generator::generator_sqlx;
 use crate::generator::generator_tempalte;
 use crate::parser::config_reader;
 use crate::parser::reader_yaml;
+use crate::runtime;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 pub mod config;
@@ -18,6 +19,10 @@ enum Command {
         name: String,
         #[arg(short, long)]
         template_dir: PathBuf,
+    },
+    Run {
+        #[arg(short, long)]
+        name: String,
     },
 }
 
@@ -45,8 +50,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let miblo_config =
                 reader_yaml::reader(template_dir.parent().unwrap().to_path_buf(), config_value)?;
 
-
-
             // GENERATEUR CODE
             generator_tempalte::template(&project_path, name, &miblo_config)?;
             generator_sqlx::generate(&project_path, &miblo_config)?;
@@ -54,6 +57,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             generator_sql::generate(&project_path, &miblo_config)?;
             generator_routes::generate(&project_path, &miblo_config)?;
             generator_handlers::generate(&project_path, &miblo_config)?;
+        }
+        Command::Run { name } => {
+            runtime::start(&name.to_string())?;
         }
     }
     Ok(())
