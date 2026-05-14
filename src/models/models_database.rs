@@ -2,10 +2,10 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Database {
-    pub DB_CONNECTION: String,
-    pub DB_HOST: String,
-    pub DB_PORT: u16,
-    pub DB_DATABASE: String,
-    pub DB_USERNAME: String,
-    pub DB_PASSWORD: String,
+    pub db_connexion: String,
+    pub db_host: String,
+    pub db_port: u16,
+    pub db_database: String,
+    pub db_username: String,
+    pub db_password: String,
 }
