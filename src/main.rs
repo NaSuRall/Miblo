@@ -5,6 +5,7 @@ pub mod generator;
 pub mod runtime;
 pub mod parser;
 pub mod models;
+pub mod services;
 
 fn main() {
 
