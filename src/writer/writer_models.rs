@@ -1,10 +1,25 @@
+//! Model struct file writer.
+
 use std::error::Error;
 use std::path::PathBuf;
 use crate::engine::handlebars_model::RenderedModel;
 use std::fs::File;
 use std::io::Write;
 
-pub fn writer_model(project_path: &PathBuf, models: Vec<RenderedModel>) -> Result<(), Box<dyn Error>>{
+/// Write model source files and re-generate `src/models/mod.rs`.
+///
+/// The generated `mod.rs` always includes the auth modules (`claim`, `register`, `login`)
+/// in addition to every rendered model.
+///
+/// # Arguments
+///
+/// * `project_path` – root of the generated project.
+/// * `models` – list of rendered models produced by [`crate::engine::handlebars_model::send_model_handlebars`].
+///
+/// # Errors
+///
+/// Returns an error if any file cannot be created or written.
+pub fn writer_model(project_path: &PathBuf, models: Vec<RenderedModel>) -> Result<(), Box<dyn Error>> {
     let model_dir = project_path.join("src/models");
     let mod_file_path = model_dir.join("mod.rs");
     let mut mod_file = File::create(&mod_file_path)?;

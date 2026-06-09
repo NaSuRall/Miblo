@@ -1,4 +1,9 @@
-use std::{error::Error};
+//! SQLx migration file generator.
+//!
+//! Calls `sqlx migrate add init_database` inside the project directory, then renders
+//! `migration.sql.hbs` and appends the output to the freshly-created migration file.
+
+use std::error::Error;
 use std::process::Command;
 use handlebars::Handlebars;
 use std::path::PathBuf;
@@ -8,6 +13,14 @@ use crate::cli::config::MibloConfig;
 use crate::engine::type_rust::map_type_sql;
 use crate::writer::writer_migration;
 
+/// Generate the initial SQLx migration for all models in `miblo_config`.
+///
+/// Requires `sqlx` to be installed and available in `PATH`.
+///
+/// # Errors
+///
+/// Returns an error if `sqlx migrate add` fails, if the template cannot be loaded,
+/// or if writing the migration file fails.
 pub fn generate(project_path: &PathBuf, miblo_config: &MibloConfig) -> Result<(), Box<dyn Error>> {
 
     let mut hbs = Handlebars::new();

@@ -1,3 +1,8 @@
+//! Project scaffold generator.
+//!
+//! Creates the directory tree and renders the static project files
+//! (`Cargo.toml`, `main.rs`, `.env`, auth handlers, …) from Handlebars templates.
+
 use handlebars::Handlebars;
 use serde_json::{Value, json};
 use std::error::Error;
@@ -6,6 +11,14 @@ use std::path::Path;
 
 use crate::cli::config::MibloConfig;
 
+/// Scaffold the static project structure under `project_path`.
+///
+/// Creates `src/{routes,sql,handlers,config,models}` directories and renders
+/// every static template (listed in the function body) into the project tree.
+///
+/// # Errors
+///
+/// Returns an error if any directory or file cannot be created, or if template rendering fails.
 pub fn template(
     project_path: &Path,
     name: &str,
@@ -65,6 +78,9 @@ pub fn template(
     Ok(())
 }
 
+/// Load a template file, render it with `data`, and write the result to `base/output`.
+///
+/// Parent directories of the destination path are created automatically.
 fn render_and_write(
     hbs: &mut Handlebars,
     output: &str,

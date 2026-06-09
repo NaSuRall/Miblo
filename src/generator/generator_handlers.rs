@@ -1,9 +1,22 @@
+//! Handler file generator.
+//!
+//! Produces one `src/handlers/<model>.rs` file per model declared in the config,
+//! rendering `handlers.rs.hbs` with per-model SQL path constants and field names.
+
 use handlebars::Handlebars;
 use serde_json::json;
 use std::{error::Error, path::PathBuf};
 
-use crate::{cli::config::MibloConfig, writer::{self, writer_handlers}};
+use crate::{cli::config::MibloConfig, writer::writer_handlers};
 
+/// Generate Axum handler files for every model in `miblo_config`.
+///
+/// Reads `handlers.rs.hbs` from the template directory and writes one `.rs`
+/// file per model under `<project_path>/src/handlers/`.
+///
+/// # Errors
+///
+/// Returns an error if the template cannot be loaded or if writing any output file fails.
 pub fn generate(project_path: &PathBuf, miblo_config: &MibloConfig) -> Result<(), Box<dyn Error>> {
     let mut hbs = Handlebars::new();
     let mut results = Vec::new();

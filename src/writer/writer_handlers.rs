@@ -1,6 +1,22 @@
+//! Handler file writer.
+
 use std::{error::Error, fs::File, path::PathBuf};
 use std::io::Write;
 
+/// Write handler source files and update `src/handlers/mod.rs`.
+///
+/// Creates one `.rs` file per entry in `handlers` under `<project_path>/src/handlers/`
+/// and re-creates `mod.rs` with the appropriate `pub mod` declarations (always including
+/// the `register` and `login` auth modules).
+///
+/// # Arguments
+///
+/// * `project_path` – root of the generated project.
+/// * `handlers` – list of `(model_name, rendered_content)` pairs.
+///
+/// # Errors
+///
+/// Returns an error if any file cannot be created or written.
 pub fn writer(project_path: &PathBuf, handlers: Vec<(String, String)>) -> Result<(), Box<dyn Error>> {
 
         let handlers_dir = project_path.join("src/handlers");

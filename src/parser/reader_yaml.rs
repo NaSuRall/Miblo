@@ -1,3 +1,5 @@
+//! YAML value → [`MibloConfig`] hydration.
+
 use std::error::Error;
 use serde_yaml::Value;
 use std::path::PathBuf;
@@ -8,7 +10,19 @@ use crate::models::models_database::Database;
 use crate::models::models_route::Route;
 use crate::models::models_server::Server;
 
-pub fn reader( config_dir: PathBuf, yaml: Value) -> Result<MibloConfig, Box<dyn Error>> {
+/// Deserialize a raw [`serde_yaml::Value`] (produced by [`crate::parser::config_reader::reader`])
+/// into a fully-typed [`MibloConfig`].
+///
+/// # Arguments
+///
+/// * `config_dir` – directory that contains `config.yaml` (stored verbatim in the returned config).
+/// * `yaml` – the parsed YAML tree.
+///
+/// # Errors
+///
+/// Returns an error if any required key (`routes`, `models`, `server`, `database`, `auth`,
+/// `template_dir`) is missing or has an unexpected type.
+pub fn reader(config_dir: PathBuf, yaml: Value) -> Result<MibloConfig, Box<dyn Error>> {
 
     let routes: Vec<Route> = serde_yaml::from_value(yaml["routes"].clone()).expect("Failed to read routes value form yaml");
     let models: Vec<Model> = serde_yaml::from_value(yaml["models"].clone())?;

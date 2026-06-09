@@ -1,3 +1,8 @@
+//! Axum router generator.
+//!
+//! Produces `src/routes/mod.rs` by rendering `routes.rs.hbs` with the full
+//! list of routes from the config, including capitalized model names for handler imports.
+
 use crate::writer::writer_routes;
 use handlebars::Handlebars;
 use serde_json::json;
@@ -5,6 +10,11 @@ use std::{error::Error, path::PathBuf};
 
 use crate::cli::config::MibloConfig;
 
+/// Generate the Axum router module at `<project_path>/src/routes/mod.rs`.
+///
+/// # Errors
+///
+/// Returns an error if the template cannot be loaded or if writing the output file fails.
 pub fn generate(project_path: &PathBuf, miblo_config: &MibloConfig) -> Result<(), Box<dyn Error>> {
     let mut hbs = Handlebars::new();
 
@@ -38,6 +48,7 @@ pub fn generate(project_path: &PathBuf, miblo_config: &MibloConfig) -> Result<()
     Ok(())
 }
 
+/// Capitalise the first character of `s`, leaving the rest unchanged.
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {

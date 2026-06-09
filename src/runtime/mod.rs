@@ -1,3 +1,8 @@
+//! Runtime launcher for the generated project.
+//!
+//! Runs `sqlx migrate run` (best-effort) and then `cargo run` inside the project
+//! directory, streaming stdout through a spinner until the server reports it is ready.
+
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::env::current_dir;
@@ -6,6 +11,18 @@ use std::io::BufReader;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+/// Start the generated project identified by `name`.
+///
+/// 1. Resolves `<current_dir>/<name>` as the project directory.
+/// 2. Runs `sqlx migrate run` (failures are silently ignored).
+/// 3. Spawns `cargo run` and streams its stdout line by line.
+/// 4. Stops the spinner and prints a success message when a line containing
+///    `"Server running on"` is detected.
+///
+/// # Errors
+///
+/// Returns an error if `cargo run` cannot be spawned or if the child process exits
+/// with a non-zero status.
 pub fn start(name: &String) -> Result<(), Box<dyn std::error::Error>> {
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(

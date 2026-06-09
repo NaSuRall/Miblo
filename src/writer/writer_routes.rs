@@ -1,8 +1,18 @@
+//! Axum router file writer.
+
 use crate::cli::config::MibloConfig;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::{error::Error, path::Path};
 
+/// Append the rendered Axum router content to `<project_path>/src/routes/mod.rs`.
+///
+/// The file is opened in create+append mode so repeated calls accumulate content
+/// (though in normal usage this is called exactly once per generation).
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be opened or written.
 pub fn write_routes(
     project_path: &Path,
     routes: String,

@@ -1,3 +1,8 @@
+//! Command-line interface definitions and main dispatch logic.
+//!
+//! This module owns the Clap [`Cli`] / [`Command`] types and the [`run`] entry-point
+//! that is called from `main`.
+
 use crate::engine::create_folder;
 /*
 use crate::generator::generator_handlers;
@@ -13,22 +18,31 @@ use crate::runtime;
 use crate::services::generator_service;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+
+/// Shared configuration types used across CLI and generators.
 pub mod config;
 
+/// Available sub-commands for the `miblo` binary.
 #[derive(Subcommand)]
 enum Command {
+    /// Scaffold a new Axum + SQLx project from a template directory.
     Init {
+        /// Name of the project to create (also used as the output directory name).
         #[arg(short, long)]
         name: String,
+        /// Path to the `config.yaml` file inside your template directory.
         #[arg(short, long)]
         template_dir: PathBuf,
     },
+    /// Start the generated project with `sqlx migrate run` then `cargo run`.
     Run {
+        /// Name of the project directory to run.
         #[arg(short, long)]
         name: String,
     },
 }
 
+/// Top-level CLI struct parsed by Clap.
 #[derive(Parser)]
 #[command(name = "miblo", about = "Génerate Api Rust")]
 struct Cli {
@@ -36,6 +50,9 @@ struct Cli {
     command: Command,
 }
 
+/// Parse CLI arguments and dispatch to the appropriate sub-command.
+///
+/// Returns `Ok(())` on success or a boxed error describing what went wrong.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match &cli.command {
