@@ -31,32 +31,48 @@ cargo install --path .
 
 ## Quick Start
 
-**1. Create your template directory and `config.yaml`:**
-
-```
-my_template/
-├── config.yaml
-├── model.rs.hbs
-├── handlers.rs.hbs
-├── routes.rs.hbs
-├── Cargo.toml.hbs
-├── main.rs.hbs
-├── config.rs.hbs
-├── .env.hbs
-└── sql/
-    ├── get.sql.hbs
-    ├── post.sql.hbs
-    ├── patch.sql.hbs
-    └── delete.sql.hbs
-```
-
-**2. Scaffold the project:**
+**1. Clone the official templates:**
 
 ```bash
-miblo init --name my_api --template-dir ./my_template/config.yaml
+git clone https://github.com/NaSuRall/miblo_templates
 ```
 
-**3. Start the server:**
+The template repository has the following structure:
+
+```
+miblo_templates/
+└── rust_template/
+    ├── config.yaml          ← point --template-dir here
+    └── handlebars/
+        ├── .env.hbs
+        ├── Cargo.toml.hbs
+        ├── main.rs.hbs
+        ├── config.rs.hbs
+        ├── model.rs.hbs
+        ├── handlers.rs.hbs
+        ├── routes.rs.hbs
+        ├── migration.sql.hbs
+        ├── login.rs.hbs
+        ├── register.rs.hbs
+        ├── claim.rs.hbs
+        ├── login_model.rs.hbs
+        ├── register_model.rs.hbs
+        └── sql/
+            ├── get.sql.hbs
+            ├── post.sql.hbs
+            ├── patch.sql.hbs
+            └── delete.sql.hbs
+```
+
+**2. Edit `config.yaml` to describe your project** (see [config.yaml Reference](#configyaml-reference) below).
+
+**3. Scaffold the project:**
+
+```bash
+miblo init --name my_api --template-dir ./miblo_templates/rust_template/config.yaml
+```
+
+**4. Start the server:**
 
 ```bash
 miblo run --name my_api
@@ -65,14 +81,18 @@ miblo run --name my_api
 ## config.yaml Reference
 
 ```yaml
+language: rust
+
+template_dir: "handlebars"  # folder name relative to config.yaml
+
 server:
   - port: 8080
-    address: "127.0.0.1"  # defaults to 0.0.0.0:3000 if omitted
+    address: "0.0.0.0"
 
 database:
-  - db_connexion: postgres
+  - db_connexion: mysql
     db_host: localhost
-    db_port: 5432
+    db_port: 3306
     db_database: my_db
     db_username: user
     db_password: secret
@@ -104,10 +124,10 @@ routes:
     path: /users
   - method: patch
     model: User
-    path: /users/:id
+    path: /users/{user_id}
   - method: delete
     model: User
-    path: /users/:id
+    path: /users/{user_id}
 ```
 
 ### Field types
