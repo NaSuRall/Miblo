@@ -2,7 +2,6 @@
 //!
 //! This module owns the Clap [`Cli`] / [`Command`] types and the [`run`] entry-point
 //! that is called from `main`.
-
 use crate::engine::create_folder;
 use crate::parser::config_reader;
 use crate::parser::reader_yaml;
