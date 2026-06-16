@@ -2,6 +2,13 @@
 name = "miblo_cli_v2"
 version = "0.1.0"
 edition = "2024"
+description = "A code generator for Axum + SQLx APIs from template files YAML / HANDLEBARS"
+license = "MIT"
+repository = "https://github.com/NaSuRall/Miblo"
+readme = "README.md"
+keywords = ["axum", "sqlx", "codegen", "api", "generator"]
+categories = ["command-line-utilities", "development-tools"]
+
 
 [dependencies]
 clap = { version = "4.5.59", features = ["derive"] }
