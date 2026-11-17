@@ -3,28 +3,54 @@
 Create and extend a Rust REST API using Axum, SQLx and SQLite or MySQL. The CLI asks for
 project settings and resources, downloads a versioned Handlebars template pack,
 and writes a normal Rust project that runs independently of Miblo.
+Miblo fournit le socle (structure, modèles, routes et base de données). Les règles
+métier, l’authentification, les permissions et le déploiement de l’API appartiennent
+au développeur qui reprend le projet généré.
 
 This development version is **0.9.0**. It supports template formats **1, 2 and 3**, with new projects using format **3** and
 `rust-axum-mysql` or `rust-axum-sqlite`, both version **0.6.0**. Neither publishing a crate nor publishing a GitHub
 Release is performed by the build or packaging scripts.
 
-## Install from this checkout
+## Installation et prérequis
+
+Installez Rust **1.88 ou ultérieur**, Cargo et `rustfmt` avec
+[rustup](https://rustup.rs/). `rustfmt` est utilisé pour générer et fusionner le code.
+Il faut également un compilateur et un éditeur de liens natifs : outils de
+développement C/C++ sous Linux, Command Line Tools sous macOS, ou Visual Studio
+Build Tools avec « Desktop development with C++ » sous Windows (MSVC).
+
+```sh
+rustup update stable
+rustup component add rustfmt
+```
+
+Depuis ce dépôt :
 
 ```sh
 cargo install --path . --locked
 miblo --help
 ```
 
-The executable is `miblo`; the Cargo package remains `miblo_cli_v2`.
-A recent stable Rust toolchain is required. SQLite needs no external database
-server. MySQL projects need a reachable MySQL server to run their APIs.
-There is no dependency on an installed `sqlx-cli`.
+L’exécutable s’appelle `miblo` ; le paquet Cargo s’appelle `miblo_cli_v2`.
+Si la commande est introuvable après installation, ouvrez un nouveau terminal
+et vérifiez que le dossier `bin` de Cargo est dans le `PATH` (généralement
+`~/.cargo/bin`, ou `%USERPROFILE%\.cargo\bin` sous Windows).
+
+SQLite ne demande aucun serveur supplémentaire. Une API MySQL demande un serveur
+MySQL accessible. `sqlx-cli`, Python et Docker ne sont pas nécessaires à l’usage
+de Miblo. Les templates sont téléchargés au premier usage, puis réutilisables avec
+le cache ; ils restent externes au binaire.
 
 Once this version is published, installation will be:
 
 ```sh
 cargo install miblo_cli_v2 --version 0.9.0 --locked
 ```
+
+La publication sur crates.io est distincte du push GitHub. Les commandes ci-dessus
+utilisent `--locked` pour conserver les dépendances testées. La génération du
+squelette est rapide ; la première compilation de Rust et de ses dépendances peut
+prendre plusieurs minutes.
 
 ## Full-screen API workspace
 
@@ -497,8 +523,9 @@ miblo new --config path/to/miblo.yaml --template-dir PATH --yes
 ```
 
 Editing an existing resource definition in place does not update its SQL table.
-For this release, make schema changes through handwritten migrations and code.
-The `add resource` command checks that existing definitions still match its state.
+Use **m** in the workspace or `miblo edit` to add optional fields and relations,
+with additive migrations and preservation of customized code. Changes outside
+that supported scope still need handwritten migrations and code.
 Set runtime port and database options through the generated `.env`.
 
 The old `init --name ... --template-dir config.yaml` command and its YAML schema
@@ -508,11 +535,35 @@ there is no automatic upgrade of old projects or templates.
 
 ## Development and checks
 
+GitHub Actions runs on pushes to `main`, pull requests, manual dispatch and a weekly schedule.
+It checks the CLI and installation on Linux, macOS and Windows, plus Rust 1.88
+on Linux. The terminal interaction test currently runs on Linux; Windows terminal
+behavior should also be exercised manually before claiming full TUI support there.
+
 ```sh
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 ```
+
+The installation check packages the crate, rejects unwanted or missing files,
+extracts it outside this checkout and installs it into a temporary Cargo root.
+It then downloads the public SQLite templates into an empty cache, generates
+models, a relation and a CRUD route, applies migrations and compiles the API.
+It never replaces an existing `miblo` installation or publishes a crate.
+Python 3.12+ is required for these developer checks.
+
+```sh
+python3 scripts/check_install.py --target-dir target/beta-check
+# For local changes before committing:
+python3 scripts/check_install.py --target-dir target/beta-check --allow-dirty
+```
+
+The CI retains the tested `.crate` as an artifact for 14 days. Before publishing a
+beta, all jobs must pass on the exact commit, the version and changelog must be
+finalized, and `cargo publish --dry-run --locked` must pass. Then publish that version
+explicitly and verify `cargo install miblo_cli_v2 --version <version> --locked`
+from the registry. No workflow performs publication automatically.
 
 The CLI tests cover download/cache behavior, HTTP responses and confirmation,
 compact dashboard layout, and actual SQLite migration status (pending and changed SQL).
@@ -528,6 +579,14 @@ python3 scripts/smoke_mysql.py \
 This script creates its own temporary MySQL data directory and local ports,
 compiles a generated API, exercises CRUD and cleans up its processes and data.
 It never uses an existing database. Docker is not required for this test.
+The Linux CI uses a disposable MySQL 8.4 container instead; its port is restricted
+to loopback, and the container and its data volume are removed after the test:
+
+```sh
+python3 scripts/smoke_mysql.py --miblo target/debug/miblo \
+  --templates ../miblo_templates/rust_template_v4 --docker \
+  --target-dir target/generated
+```
 
 Use `--remote` instead of `--templates ...` to verify the default published
 release with an empty template cache. That mode clears template source overrides,
@@ -541,6 +600,10 @@ python3 scripts/smoke_sqlite.py --miblo target/debug/miblo \
   --templates ../miblo_templates/rust_sqlite_template_v4 \
   --target-dir target/sqlite-smoke
 ```
+
+The first build may download Rust dependencies, which allows these tests to run
+on a fresh machine. SQLite/TUI checks accept `--cargo-offline` when those dependencies
+are already cached; this does not disable the template download being tested.
 
 It checks empty-project startup, automatic file creation, model additions,
 migrations, CRUD, concurrent PATCH and persistence across restarts. `--remote`
@@ -560,15 +623,22 @@ python3 scripts/smoke_tui.py \
   --api-target-dir /tmp/miblo-tui-api-target
 ```
 
+Install the terminal-test dependencies with
+`python3 -m pip install -r scripts/requirements-test.txt`, preferably in a virtual
+environment. The CI pins template fixtures to an immutable commit and covers both
+current packs and legacy models. The packaged-install jobs exercise the public
+release separately, without a template checkout.
+
 The CLI is organized around `config`, `templates`, `generation`, `wizard`,
 `cli`, `database`, `runtime` and `tui`. The production template pack stays in the separate
 `miblo_templates` repository; it is not embedded in the CLI binary.
 
 ## Next steps
 
-Authentication with protected routes and proper password handling, richer field
-types, automatic many-to-many relations, OpenAPI, existing-schema evolution, then one Node/TypeScript
-backend. These are not implemented by this release.
+The first public beta focuses on reliable generation, preservation of handwritten
+code, installation and useful error recovery. Richer field types, many-to-many
+relations, OpenAPI and another backend can follow. Authentication and deployment
+remain application-specific responsibilities of the generated project's developer.
 
 License: MIT.
 
