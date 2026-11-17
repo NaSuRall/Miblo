@@ -145,7 +145,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
             try: request('GET', '/health'); break
             except (OSError, urllib.error.URLError): time.sleep(.1)
         else: raise RuntimeError('Evolved API did not start')
-        evolution_checks.requests(request, '/products', resource, dict(value, description=None, quantity=0, active=False))
+        evolution_checks.requests(request, '/products', resource, dict(value, description=None, quantity=0, active=False), layered=(project / 'src/resources/product/service.rs').exists())
         request('DELETE', resource, expected=204)
         request('DELETE', resource, expected=404)
         request('GET', resource, expected=404)

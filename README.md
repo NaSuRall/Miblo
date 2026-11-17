@@ -4,8 +4,8 @@ Create and extend a Rust REST API using Axum, SQLx and SQLite or MySQL. The CLI 
 project settings and resources, downloads a versioned Handlebars template pack,
 and writes a normal Rust project that runs independently of Miblo.
 
-This development version is **0.6.0**. It uses template format **1** with
-`rust-axum-mysql` or `rust-axum-sqlite`, both version **0.3.0**. Neither publishing a crate nor publishing a GitHub
+This development version is **0.7.0**. It supports template formats **1 and 2**, with new projects using format **2** and
+`rust-axum-mysql` or `rust-axum-sqlite`, both version **0.4.0**. Neither publishing a crate nor publishing a GitHub
 Release is performed by the build or packaging scripts.
 
 ## Install from this checkout
@@ -23,7 +23,7 @@ There is no dependency on an installed `sqlx-cli`.
 Once this version is published, installation will be:
 
 ```sh
-cargo install miblo_cli_v2 --version 0.6.0 --locked
+cargo install miblo_cli_v2 --version 0.7.0 --locked
 ```
 
 ## Full-screen API workspace
@@ -68,8 +68,8 @@ Creation and resource addition use popup forms with arrow-key selections and
 Space to toggle field options. Escape cancels a form before generation.
 Project creation asks for the database (SQLite by default), then the template source: GitHub release, local pack or
 custom archive URL. The UI suggests a valid pack found at
-`miblo_templates/rust_template_v1` for MySQL or
-`miblo_templates/rust_sqlite_template_v1` for SQLite, relative to the current
+`miblo_templates/rust_template_v2` for MySQL or
+`miblo_templates/rust_sqlite_template_v2` for SQLite, relative to the current
 directory or its parents (the folder directly inside a template checkout also
 works). A matching `MIBLO_TEMPLATE_DIR` takes priority when set.
 The suggested local path is preselected and remains reviewable before generation;
@@ -210,7 +210,7 @@ keys and foreign keys can still be inspected in the actual schema.
 **Older projects:** press **u**, choose the published pack, a local directory or
 a custom archive URL, and confirm. This updates only the template pin for future
 models; no existing Rust files, tables or applied migrations are rewritten.
-The official relation packs are version **0.3.0** and require CLI **0.5+**. The
+The current packs are version **0.4.0**, format **2**, and require CLI **0.7+**. The previous 0.3.0 packs remain available. The
 CLI refuses to silently generate a relation with an older pack. Existing custom
 error handlers are preserved; if an older parent route reports a generic error
 on a protected deletion, the database still blocks it. Update its error mapping
@@ -219,7 +219,7 @@ in your editor if you want a specific response.
 ```sh
 miblo template update --project my-api
 # Local development:
-miblo template update --project my-api --template-dir ../miblo_templates/rust_sqlite_template_v1
+miblo template update --project my-api --template-dir ../miblo_templates/rust_sqlite_template_v2
 ```
 
 ## Guided creation
@@ -238,8 +238,8 @@ Authentication is deliberately deferred.
 The default template URLs depend on the chosen database:
 
 ```text
-https://github.com/NaSuRall/miblo_templates/releases/download/v0.3.0/rust-axum-mysql.tar.gz
-https://github.com/NaSuRall/miblo_templates/releases/download/v0.3.0/rust-axum-sqlite.tar.gz
+https://github.com/NaSuRall/miblo_templates/releases/download/v0.4.0/rust-axum-mysql.tar.gz
+https://github.com/NaSuRall/miblo_templates/releases/download/v0.4.0/rust-axum-sqlite.tar.gz
 ```
 
 Each archive has a `.sha256` sidecar in its versioned GitHub release.
@@ -247,7 +247,7 @@ No local template folder is needed for the default remote command.
 For template development, with both repositories checked out next to one another:
 
 ```sh
-miblo new shop-api --database mysql --template-dir ../miblo_templates/rust_template_v1
+miblo new shop-api --database mysql --template-dir ../miblo_templates/rust_template_v2
 ```
 
 Do not point this option at the legacy `rust_template/config.yaml`: the new
@@ -258,7 +258,7 @@ pack has a `manifest.json` and separate `project/` and `resource/` templates.
 
 ```sh
 miblo new shop-api \
-  --template-dir ../miblo_templates/rust_template_v1 \
+  --template-dir ../miblo_templates/rust_template_v2 \
   --resource Product \
   --field title:string:unique \
   --field 'description:text?' \
@@ -373,8 +373,8 @@ cargo run
 Stop the API before editing. Generation does **not** apply the migration, including
 on SQLite: the orange BDD status signals that it is pending. Use **b → Appliquer
 les migrations**, then **r** to rebuild/restart. The generated API also applies
-pending migrations on startup. This uses the existing remote **0.3.0** packs;
-no local template directory or new template download is required if cached.
+pending migrations on startup. This works with both legacy **0.3.0** and current **0.4.0** remote packs;
+no local template directory is required. Each model keeps its own pinned pack.
 
 Miblo saves pristine generated resource sources in `.miblo/state.json` and uses
 three-way merging to retain custom Rust changes. `rustfmt` must be installed
@@ -382,7 +382,7 @@ three-way merging to retain custom Rust changes. `rustfmt` must be installed
 invalid Rust syntax, generation aborts before changing any project files. Review
 and reconcile the conflicting custom code before retrying. Projects from earlier
 versions reconstruct their first baseline from their pinned template. Keep using
-Miblo **0.6+** once new generation metadata is saved.
+Miblo **0.7+** once new generation metadata is saved.
 
 Replaced source/configuration/state files are copied to
 `.miblo/backups/<migration-version>/`. These are code backups, **not database
@@ -394,6 +394,44 @@ This editor currently supports **additions**. Renaming/removing columns, changin
 existing types, making fields required and changing existing relationship rules
 need a separate explicit migration; these operations are not generated by the
 interface. It does not invent values or relationships for existing rows.
+
+## Generated code for human maintenance
+
+New APIs use small, ordinary Rust modules, formatted with rustfmt during
+generation. Install the formatter with `rustup component add rustfmt` if needed.
+Comments and the generated getting-started README are in French; identifiers
+follow Rust conventions in English. There is no extra application framework.
+
+```text
+src/main.rs                  server startup
+src/config.rs                environment configuration
+src/database.rs              pool and migrations
+src/lib.rs                   shared state, health route and route assembly
+src/resources/user/
+  mod.rs                     route definitions
+  handlers.rs                HTTP extraction and responses
+  model.rs                   User database/response structure
+  requests.rs                CreateUser, UpdateUser, pagination and validation
+  service.rs                 business rules and use cases
+  repository.rs              SQL queries and transactions
+```
+
+A write follows `handlers → service → repository`. Add business rules in
+`service.rs`, validation in `requests.rs` and query changes in `repository.rs`.
+Handlers and services do not enumerate model fields, so adding a field leaves
+these files byte-for-byte intact. Model/request/SQL changes use the existing
+three-way merge and backups. Each resource includes request validation tests.
+
+The generated README covers setup, the file map, customization examples, curl
+requests, relations, migrations and testing. Applications run with Cargo without
+requiring Miblo at runtime.
+
+Updating templates with **u** affects future models. Existing models retain
+their structure and their original template pin for subsequent edits; a project
+may contain both layouts. Existing application files and migrations are not
+rewritten. The format-1 folders and published archives remain available. An older
+pack that lacks relations still requires a deliberate code/template upgrade to
+add relations to that model.
 
 ## API behavior
 
@@ -409,11 +447,11 @@ JSON responses. The scaffold has no authentication or authorization yet.
 
 ```sh
 miblo new shop-api --template-base-url https://templates.example.com --yes
-# Fetches /v0.3.0/rust-axum-mysql.tar.gz and its .sha256 sidecar.
+# Fetches /v0.4.0/rust-axum-mysql.tar.gz and its .sha256 sidecar.
 
 miblo new shop-api \
   --template-url https://templates.example.com/custom/api.tar.gz \
-  --template-version 0.3.0 --yes
+  --template-version 0.4.0 --yes
 ```
 
 `MIBLO_TEMPLATE_BASE_URL` can set the default base URL. `--sha256 HEX` provides a
@@ -463,7 +501,7 @@ To test the actual template output with MySQL installed (`mysql` and `mysqld`):
 cargo build --locked
 python3 scripts/smoke_mysql.py \
   --miblo target/debug/miblo \
-  --templates ../miblo_templates/rust_template_v1
+  --templates ../miblo_templates/rust_template_v2
 ```
 
 This script creates its own temporary MySQL data directory and local ports,
@@ -479,7 +517,7 @@ SQLite has a separate end-to-end test, with no database server prerequisite:
 
 ```sh
 python3 scripts/smoke_sqlite.py --miblo target/debug/miblo \
-  --templates ../miblo_templates/rust_sqlite_template_v1 \
+  --templates ../miblo_templates/rust_sqlite_template_v2 \
   --target-dir target/sqlite-smoke
 ```
 
@@ -497,7 +535,7 @@ and must be reported as unresponsive:
 ```sh
 python3 scripts/smoke_tui.py \
   --miblo target/debug/miblo \
-  --database sqlite --templates ../miblo_templates/rust_sqlite_template_v1 \
+  --database sqlite --templates ../miblo_templates/rust_sqlite_template_v2 \
   --api-target-dir /tmp/miblo-tui-api-target
 ```
 

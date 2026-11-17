@@ -522,7 +522,7 @@ impl App {
             }
             InputKind::NewLocal => {
                 let pack = crate::templates::Pack::local(Path::new(value))
-                    .context("Pack local invalide : choisis le dossier rust_template_v1 complet")?;
+                    .context("Pack local invalide : choisis le dossier complet du template")?;
                 ensure!(
                     pack.id == self.new_draft.database.stack(),
                     "Ce template utilise une autre base ; choisis un pack {}",
@@ -942,7 +942,7 @@ impl App {
                     }
                     _ => self.input(
                         InputKind::TemplateUrl,
-                        "URL du template 0.3.0 (.tar.gz)",
+                        "URL du template 0.4.0 (.tar.gz)",
                         "",
                     ),
                 }
@@ -1180,7 +1180,7 @@ impl App {
             ChoiceKind::TemplateSource,
             "Templates pour les futurs modèles",
             &[
-                "GitHub Releases — version 0.3.0 avec relations",
+                "GitHub Releases — version 0.4.0, code découpé",
                 "Dossier local",
                 "URL personnalisée",
             ],
@@ -1194,7 +1194,7 @@ impl App {
     }
     fn confirm_template_update(&mut self) {
         let source = if self.template_draft.source == 0 {
-            "GitHub Releases · version 0.3.0".into()
+            "GitHub Releases · version 0.4.0".into()
         } else {
             self.template_draft.location.clone()
         };

@@ -154,6 +154,7 @@ fn edit_preserves_history_custom_code_and_legacy_projects() {
     let path = root.join(".miblo/state.json");
     let mut state: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     state.as_object_mut().unwrap().remove("generated");
+    state.as_object_mut().unwrap().remove("resource_templates");
     fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
     let model = root.join("src/resources/user/model.rs");
     let mut source = fs::read_to_string(&model).unwrap();
@@ -309,6 +310,175 @@ fn failed_sqlite_alteration_rolls_back_columns_and_keeps_rows() {
         assert_eq!(versions, 1);
         connection.close().await.unwrap();
     });
+}
+
+fn layered_pack(dir: &Path) -> PathBuf {
+    let root = pack(dir);
+    fs::write(root.join("manifest.json"), r#"{"schema_version":2,"id":"rust-axum-sqlite","version":"0.4.0","features":["relations","layered-resources"]}"#).unwrap();
+    for file in [
+        "main", "lib", "error", "patch", "build", "health", "config", "database",
+    ] {
+        fs::write(
+            root.join(format!("project/{file}.rs.hbs")),
+            "// Project fixture\n",
+        )
+        .unwrap();
+    }
+    fs::write(
+        root.join("project/env.hbs"),
+        "DATABASE_URL=sqlite://data.sqlite\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("resource/mod.rs.hbs"),
+        "pub mod model; pub mod handlers; pub mod requests; pub mod service; mod repository;\n",
+    )
+    .unwrap();
+    for file in ["model", "requests"] {
+        fs::write(root.join(format!("resource/{file}.rs.hbs")), "pub struct {{name}} {\n{{#each fields}}pub {{name}}:{{#if nullable}}Option<{{rust_type}}>{{else}}{{rust_type}}{{/if}},\n{{/each}}}\n").unwrap();
+    }
+    fs::write(
+        root.join("resource/handlers.rs.hbs"),
+        "pub fn handler() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("resource/service.rs.hbs"),
+        "pub fn business_rule() -> i32 { 1 }\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("resource/repository.rs.hbs"),
+        "pub fn columns() -> Vec<&'static str> { vec![{{#each fields}}\"{{name}}\",{{/each}}] }\n",
+    )
+    .unwrap();
+    fs::write(root.join("resource/migration.sql.hbs"), "CREATE TABLE `{{table}}` (`id` INTEGER PRIMARY KEY,{{#each fields}}`{{name}}` {{sql_type}}{{#unless nullable}} NOT NULL{{/unless}}{{#unless @last}},{{/unless}}{{/each}});\n").unwrap();
+    root
+}
+
+#[test]
+fn template_updates_keep_each_models_architecture_and_custom_service() {
+    let dir = TempDir::new().unwrap();
+    let root = editable_project(dir.path());
+    let template = layered_pack(&dir.path().join("next"));
+    let before = tree(&root);
+    success(cli(
+        &[
+            "template",
+            "update",
+            "--template-dir",
+            template.to_str().unwrap(),
+        ],
+        &root,
+    ));
+    for (path, bytes) in before
+        .iter()
+        .filter(|(path, _)| *path != root.join(".miblo/state.json"))
+    {
+        assert_eq!(fs::read(path).unwrap(), *bytes);
+    }
+    success(cli(&["add", "Group", "label:string", "--yes"], &root));
+    assert!(!root.join("src/resources/user/service.rs").exists());
+    let service = root.join("src/resources/group/service.rs");
+    let custom = "// my business rules\npub fn business_rule() -> i32 { 42 }\n";
+    fs::write(&service, custom).unwrap();
+    // The old model is edited with its old pack, and can reference a newer model.
+    success(cli(
+        &["edit", "User", "group_id:int?:ref=Group", "--yes"],
+        &root,
+    ));
+    assert!(!root.join("src/resources/user/requests.rs").exists());
+    success(cli(
+        &["edit", "Group", "owner_id:int?:ref=User", "--yes"],
+        &root,
+    ));
+    assert_eq!(fs::read_to_string(service).unwrap(), custom);
+    assert!(
+        fs::read_to_string(root.join("src/resources/group/requests.rs"))
+            .unwrap()
+            .contains("owner_id")
+    );
+    assert!(
+        fs::read_to_string(root.join("src/resources/group/repository.rs"))
+            .unwrap()
+            .contains("owner_id")
+    );
+    success(cli(&["db", "init"], &root));
+    success(cli(&["doctor"], &root));
+    // Re-selecting the pack is compatible even after module sorting by rustfmt.
+    success(cli(
+        &[
+            "template",
+            "update",
+            "--template-dir",
+            template.to_str().unwrap(),
+        ],
+        &root,
+    ));
+}
+
+#[test]
+fn layered_archive_generates_formatted_sources_and_works_offline() {
+    let dir = TempDir::new().unwrap();
+    let template = layered_pack(dir.path());
+    let server = Server::new(archive(&template, false), None);
+    let cache = dir.path().join("cache");
+    success(cli(
+        &[
+            "new",
+            "sample",
+            "--database",
+            "sqlite",
+            "--resource",
+            "User",
+            "--field",
+            "name:string",
+            "--template-url",
+            &server.url,
+            "--template-version",
+            "0.4.0",
+            "--cache-dir",
+            cache.to_str().unwrap(),
+            "--yes",
+        ],
+        dir.path(),
+    ));
+    drop(server);
+    let root = dir.path().join("sample");
+    assert!(root.join("src/config.rs").exists() && root.join("src/database.rs").exists());
+    assert!(
+        fs::read_to_string(root.join("src/resources/user/model.rs"))
+            .unwrap()
+            .contains("    pub name: String,")
+    );
+    success(cli(
+        &[
+            "edit",
+            "User",
+            "nickname:string?",
+            "--offline",
+            "--cache-dir",
+            cache.to_str().unwrap(),
+            "--yes",
+        ],
+        &root,
+    ));
+    let broken = layered_pack(&dir.path().join("broken"));
+    fs::remove_file(broken.join("resource/service.rs.hbs")).unwrap();
+    let before = tree(&root);
+    failure(
+        cli(
+            &[
+                "template",
+                "update",
+                "--template-dir",
+                broken.to_str().unwrap(),
+            ],
+            &root,
+        ),
+        "No such file",
+    );
+    assert_eq!(tree(&root), before);
 }
 
 #[test]

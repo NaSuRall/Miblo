@@ -108,7 +108,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
     root = Path(tmp)
     # Reproduce a checkout with sibling CLI/template repositories, without any
     # environment override. A missing remote release must be recoverable in-place.
-    folder = 'rust_sqlite_template_v1' if args.database == 'sqlite' else 'rust_template_v1'
+    folder = ('rust_sqlite_template_v' if args.database == 'sqlite' else 'rust_template_v') + str(json.loads((args.templates / 'manifest.json').read_text())['schema_version'])
     local_pack = root / 'miblo_templates' / folder
     shutil.copytree(args.templates.resolve(), local_pack)
     checkout = root / 'Miblo'

@@ -85,7 +85,8 @@ pub fn edit(
     for path in [CONFIG, STATE] {
         originals.insert(path.into(), fs::read(safe_path(root, path)?)?);
     }
-    let (mut project, state) = inspect(root)?;
+    let (mut project, mut state) = inspect(root)?;
+    pin_resource_templates(&project, &mut state);
     let index = project
         .resources
         .iter()
@@ -96,7 +97,15 @@ pub fn edit(
     project.resources[index].fields.extend(fields);
     project.validate()?; // includes duplicate fields, target models and total field limit
     let updated = &project.resources[index];
-    let pack = Pack::pinned(&state.template, offline, cache)?;
+    let project_pack = Pack::pinned(&state.template, offline, cache)?;
+    let pack = Pack::pinned(
+        state
+            .resource_templates
+            .get(&old.module())
+            .context("Missing model template")?,
+        offline,
+        cache,
+    )?;
     ensure!(
         pack.id == project.stack,
         "Template stack does not match the project"
@@ -104,20 +113,20 @@ pub fn edit(
     ensure!(
         !updated.fields.iter().any(|f| f.references.is_some())
             || pack.features.iter().any(|f| f == "relations"),
-        "This template does not support relations; update it with miblo template update first"
+        "The template pinned to {name} does not support relations. This model needs an explicit code/template migration; updating templates only affects future models"
     );
     let next = next_migration(root, state.next_migration)?;
     let mut generated = state.generated;
     let mut files = Files::new();
-    for (template, file) in RESOURCE_FILES {
+    for (template, file) in pack.resource_files() {
         let path = format!("src/resources/{}/{file}", old.module());
         let current = fs::read_to_string(safe_path(root, &path)?)?;
         let ancestor = match generated.get(&path) {
             Some(source) => source.clone(),
             // Projects created before 0.6 have no saved generation baseline.
-            None => pack.render(template, &resource_data(&old, project.database()))?,
+            None => render_source(&pack, template, &resource_data(&old, project.database()))?,
         };
-        let proposed = pack.render(template, &resource_data(updated, project.database()))?;
+        let proposed = render_source(&pack, template, &resource_data(updated, project.database()))?;
         if ancestor != proposed {
             let merged = merge_source(&ancestor, &current, &proposed)
                 .with_context(|| format!("Cannot safely update {path}; no files were changed. Keep your custom code and resolve the overlapping changes before retrying"))?;
@@ -132,12 +141,19 @@ pub fn edit(
     // files include user edits, so preserve the separate pristine ancestor.
     let mut meta = Files::new();
     metadata(
-        &pack,
+        &project_pack,
         &project,
         next.checked_add(1).context("Migration counter overflow")?,
         generated,
+        state.resource_templates,
         &mut meta,
     )?;
+    let mut updated_state: State = serde_json::from_str(&meta[STATE])?;
+    updated_state.registry_sha256 = state.registry_sha256;
+    meta.insert(
+        STATE.into(),
+        serde_json::to_string_pretty(&updated_state)? + "\n",
+    );
     for path in [CONFIG, STATE] {
         files.insert(path.into(), meta.remove(path).context("Missing metadata")?);
     }
@@ -172,7 +188,7 @@ fn merge_source(ancestor: &str, current: &str, proposed: &str) -> Result<String>
     format_source(&merged)
 }
 
-fn format_source(source: &str) -> Result<String> {
+pub(super) fn format_source(source: &str) -> Result<String> {
     // An isolated directory avoids loading project rustfmt config or writing project files. Files are formatted only in this temporary directory.
     let temporary = tempfile::tempdir()?;
     fs::write(temporary.path().join("rustfmt.toml"), "edition = '2024'\n")?;

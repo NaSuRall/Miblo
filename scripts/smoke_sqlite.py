@@ -21,10 +21,14 @@ source = parser.add_mutually_exclusive_group(required=True)
 source.add_argument('--templates', type=Path)
 source.add_argument('--remote', action='store_true')
 parser.add_argument('--target-dir', type=Path, required=True)
+parser.add_argument('--legacy-templates', type=Path, help='Start with an old local pack, then update before adding the remaining models')
 args = parser.parse_args()
 miblo = str(args.miblo.resolve())
 target = args.target_dir.resolve()
 template_args = ['--template-dir', str(args.templates.resolve())] if args.templates else []
+if args.legacy_templates:
+    assert args.templates, '--legacy-templates requires --templates for the new pack'
+    template_args = ['--template-dir', str(args.legacy_templates.resolve())]
 
 def stop(process):
     if process and process.poll() is None:
@@ -76,7 +80,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         assert (project / '.env').exists() and not (project / 'compose.yaml').exists()
         if args.remote:
             lock = json.loads((project / '.miblo/state.json').read_text())['template']
-            assert lock['local_path'] is None and lock['url'].endswith('/v0.3.0/rust-axum-sqlite.tar.gz')
+            assert lock['local_path'] is None and lock['url'].endswith('/v0.4.0/rust-axum-sqlite.tar.gz')
         cargo('build')
         assert not (project / 'miblo.sqlite').exists()
         api = start()
@@ -86,8 +90,14 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         custom = project / 'src/resources/user/handlers.rs'
         custom.write_text(custom.read_text() + '\n// preserved handwritten code\n')
         before = custom.read_bytes()
+        if args.legacy_templates:
+            cli('template', 'update', '--template-dir', str(args.templates.resolve()))
+            assert custom.read_bytes() == before
         cli('add', 'Category', 'label:string', '--yes', '--offline')
         assert custom.read_bytes() == before
+        if args.legacy_templates:
+            assert not (project / 'src/resources/user/service.rs').exists()
+            assert (project / 'src/resources/category/service.rs').exists()
         relation_checks.add_models(cli)
         cli('db', 'migrate')
         cli('db', 'check')
@@ -143,7 +153,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
             assert connection.execute('SELECT COUNT(*) FROM audit').fetchone()[0] == 0, 'Migration unexpectedly updated existing rows'
             assert connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('manual_index','manual_trigger')").fetchone()[0] == 2
             assert not connection.execute('PRAGMA foreign_key_check').fetchall()
-        evolution_checks.requests(request, '/users', path, dict(value, note=None, active=False, score=request('GET', path)['score']))
+        evolution_checks.requests(request, '/users', path, dict(value, note=None, active=False, score=request('GET', path)['score']), layered=(project / 'src/resources/user/service.rs').exists())
         with sqlite3.connect(project / 'miblo.sqlite') as connection:
             assert connection.execute('SELECT COUNT(*) FROM audit').fetchone()[0] > 0, 'Custom trigger no longer works'
         request('DELETE', path, expected=204)

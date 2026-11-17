@@ -30,7 +30,7 @@ impl Database {
     }
     pub fn version(self) -> &'static str {
         match self {
-            Self::Sqlite | Self::Mysql => "0.3.0",
+            Self::Sqlite | Self::Mysql => "0.4.0",
         }
     }
 }

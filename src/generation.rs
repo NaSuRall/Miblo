@@ -1,6 +1,6 @@
 use crate::{
     config::{Database, FieldType, Project, Resource},
-    templates::{PROJECT_FILES, Pack, RESOURCE_FILES, TemplateLock, digest},
+    templates::{Pack, TemplateLock, digest},
 };
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
@@ -30,9 +30,21 @@ pub struct State {
     /// Last generated resource sources, used as the ancestor for three-way merges.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub generated: BTreeMap<String, String>,
+    /// Keep each model's original architecture when updating future templates.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub resource_templates: BTreeMap<String, TemplateLock>,
 }
 
 type Files = BTreeMap<String, String>;
+
+fn render_source(pack: &Pack, template: &str, data: &Value) -> Result<String> {
+    let source = pack.render(template, data)?;
+    if pack.format == 2 && template.ends_with(".rs.hbs") {
+        edit::format_source(&source)
+    } else {
+        Ok(source)
+    }
+}
 
 fn project_data(project: &Project) -> Value {
     json!({ "project_name": project.name, "crate_name": project.name.replace('-', "_"), "port": project.port,
@@ -67,10 +79,10 @@ fn resource_files(
         "This project's template does not support relations. In Miblo press u to update templates for future models, or run miblo template update; no files were changed"
     );
     let data = resource_data(resource, database);
-    for (template, file) in RESOURCE_FILES {
+    for (template, file) in pack.resource_files() {
         files.insert(
             format!("src/resources/{}/{file}", resource.module()),
-            pack.render(template, &data)?,
+            render_source(pack, template, &data)?,
         );
     }
     files.insert(
@@ -85,6 +97,7 @@ fn metadata(
     project: &Project,
     next: u64,
     mut generated: Files,
+    resource_templates: BTreeMap<String, TemplateLock>,
     files: &mut Files,
 ) -> Result<()> {
     for (name, source) in files
@@ -94,7 +107,7 @@ fn metadata(
         generated.insert(name.clone(), source.clone());
     }
     let config = serde_yaml::to_string(project)?;
-    let registry = pack.render("registry.rs.hbs", &project_data(project))?;
+    let registry = render_source(pack, "registry.rs.hbs", &project_data(project))?;
     let state = State {
         schema_version: 1,
         template: pack.lock.clone(),
@@ -102,6 +115,7 @@ fn metadata(
         registry_sha256: registry_digest(registry.as_bytes()),
         next_migration: next,
         generated,
+        resource_templates,
     };
     files.insert(CONFIG.into(), config);
     files.insert(REGISTRY.into(), registry);
@@ -136,13 +150,13 @@ pub fn create(project: &Project, pack: &Pack, destination: &Path, dry_run: bool)
         destination.display()
     );
     let mut files = Files::new();
-    for (template, output) in PROJECT_FILES {
-        if project.database() == Database::Sqlite && *output == "compose.yaml" {
+    for (template, output) in pack.project_files() {
+        if project.database() == Database::Sqlite && output == "compose.yaml" {
             continue;
         }
         files.insert(
-            (*output).into(),
-            pack.render(template, &project_data(project))?,
+            output.into(),
+            render_source(pack, template, &project_data(project))?,
         );
     }
     for (index, resource) in project.resources.iter().enumerate() {
@@ -167,6 +181,11 @@ pub fn create(project: &Project, pack: &Pack, destination: &Path, dry_run: bool)
         project,
         project.resources.len() as u64 + 1,
         Files::new(),
+        project
+            .resources
+            .iter()
+            .map(|r| (r.module(), pack.lock.clone()))
+            .collect(),
         &mut files,
     )?;
     if dry_run {
@@ -246,7 +265,8 @@ pub fn add(
     } else {
         Some(OperationLock::acquire(root)?)
     };
-    let (mut project, state) = inspect(root)?;
+    let (mut project, mut state) = inspect(root)?;
+    pin_resource_templates(&project, &mut state);
     ensure!(
         !project
             .resources
@@ -266,11 +286,15 @@ pub fn add(
     // Manual migrations are allowed; the next generated migration follows their numeric version.
     let next = next_migration(root, state.next_migration)?;
     resource_files(&pack, &resource, next, project.database(), &mut files)?;
+    state
+        .resource_templates
+        .insert(resource.module(), pack.lock.clone());
     metadata(
         &pack,
         &project,
         next.checked_add(1).context("Migration counter overflow")?,
         state.generated,
+        state.resource_templates,
         &mut files,
     )?;
     let mut originals = BTreeMap::new();
@@ -337,16 +361,19 @@ pub fn update_template(root: &Path, pack: &Pack, dry_run: bool) -> Result<()> {
     );
     // Check the registry contract without replacing the user's formatted file.
     ensure!(
-        registry_digest(
+        registry_matches(
             pack.render("registry.rs.hbs", &project_data(&project))?
-                .as_bytes()
-        ) == state.registry_sha256,
+                .as_bytes(),
+            &project,
+            &state.registry_sha256
+        ),
         "This pack uses an incompatible route registry; nothing was changed"
     );
     println!(
         "Template {} -> {} for future models only",
         state.template.version, pack.lock.version
     );
+    pin_resource_templates(&project, &mut state);
     state.template = pack.lock.clone();
     let files = BTreeMap::from([(STATE.into(), serde_json::to_string_pretty(&state)? + "\n")]);
     let originals = BTreeMap::from([(STATE.into(), fs::read(root.join(STATE))?)]);
@@ -362,6 +389,15 @@ fn exists(path: &Path) -> Result<bool> {
         Ok(_) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e.into()),
+    }
+}
+
+fn pin_resource_templates(project: &Project, state: &mut State) {
+    for resource in &project.resources {
+        state
+            .resource_templates
+            .entry(resource.module())
+            .or_insert_with(|| state.template.clone());
     }
 }
 
@@ -552,7 +588,14 @@ fn registry_matches(bytes: &[u8], project: &Project, expected: &str) -> bool {
         .iter()
         .map(|m| format!("pubmod{m};"))
         .collect::<String>();
-    digest(format!("{}{ordered}{}", &compact[..start], &compact[end..]).as_bytes()) == expected
+    let sorted = sorted
+        .iter()
+        .map(|m| format!("pubmod{m};"))
+        .collect::<String>();
+    [ordered, sorted].iter().any(|declarations| {
+        digest(format!("{}{declarations}{}", &compact[..start], &compact[end..]).as_bytes())
+            == expected
+    })
 }
 
 #[cfg(test)]

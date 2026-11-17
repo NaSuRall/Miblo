@@ -6,13 +6,21 @@ import subprocess
 
 def generate(miblo, project, env, model):
     migrations = {p: p.read_bytes() for p in (project / 'migrations').glob('*.sql')}
-    source = project / 'src/resources' / model.lower() / 'handlers.rs'
+    folder = project / 'src/resources' / model.lower()
+    layered = (folder / 'requests.rs').exists()
+    source = folder / ('requests.rs' if layered else 'handlers.rs')
+    if layered:
+        service = folder / 'service.rs'
+        # An observable business rule must survive model evolution byte-for-byte.
+        service.write_text(service.read_text().replace('request.validate()?;', 'request.validate()?;\n    if request.' + ('name' if model == 'User' else 'title') + ' == "blocked-by-service" { return Err(ApiError::bad_request("Business rule")); }', 1))
     # A real business-logic edit, not only a comment at the end of the file.
     content = source.read_text()
     default_limit = r'(fn default_limit\(\) -> u32\s*\{\s*)20'
     assert re.search(default_limit, content)
     source.write_text(re.sub(default_limit, r'\g<1>17', content))
     subprocess.run(['cargo', 'fmt'], cwd=project, env=env, check=True)
+    service_before = (folder / 'service.rs').read_bytes() if layered else None
+    handler_before = (folder / 'handlers.rs').read_bytes() if layered else None
     before = source.read_bytes()
     def cli(*arguments):
         result = subprocess.run([miblo, *arguments], cwd=project, env=env, capture_output=True, text=True)
@@ -30,18 +38,27 @@ def generate(miblo, project, env, model):
     assert 'ranking' in current and 'verified' in current and 'internal_note' in current
     for path, content in migrations.items():
         assert path.read_bytes() == content, 'An existing migration was rewritten'
-    backups = list((project / '.miblo/backups').glob('*/src/resources/' + model.lower() + '/handlers.rs'))
+    backups = list((project / '.miblo/backups').glob('*/src/resources/' + model.lower() + '/' + source.name))
     assert len(backups) == 2 and any(p.read_bytes() == before for p in backups)
     cli('doctor')
     # A new model after editing must preserve the baseline of the edited model.
     cli('add', 'AfterEdit', 'label:string', '--yes', '--offline')
     state = json.loads((project / '.miblo/state.json').read_text())
-    key = 'src/resources/' + model.lower() + '/handlers.rs'
+    key = 'src/resources/' + model.lower() + '/' + source.name
     assert re.search(default_limit, state['generated'][key])
+    if layered:
+        assert (folder / 'service.rs').read_bytes() == service_before
+        assert (folder / 'handlers.rs').read_bytes() == handler_before
+        assert 'INSERT INTO' not in (folder / 'handlers.rs').read_text()
+        subprocess.run(['cargo', 'fmt', '--check'], cwd=project, env=env, check=True)
     print('PASS: additive edit plans, repeated custom-code merges, backups and unchanged migration history', flush=True)
 
 
-def requests(request, collection, existing_path, value):
+def requests(request, collection, existing_path, value, layered=False):
+    if layered:
+        blocked = dict(value)
+        blocked['name' if 'name' in value else 'title'] = 'blocked-by-service'
+        request('POST', collection, blocked, 400)
     old = request('GET', existing_path)
     for name in ['alias', 'category_id', 'ranking', 'verified']:
         assert old[name] is None, (name, old)

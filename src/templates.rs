@@ -32,6 +32,15 @@ pub const RESOURCE_FILES: &[(&str, &str)] = &[
     ("resource/model.rs.hbs", "model.rs"),
     ("resource/handlers.rs.hbs", "handlers.rs"),
 ];
+const LAYERED_PROJECT_FILES: &[(&str, &str)] = &[
+    ("project/config.rs.hbs", "src/config.rs"),
+    ("project/database.rs.hbs", "src/database.rs"),
+];
+const LAYERED_RESOURCE_FILES: &[(&str, &str)] = &[
+    ("resource/requests.rs.hbs", "requests.rs"),
+    ("resource/service.rs.hbs", "service.rs"),
+    ("resource/repository.rs.hbs", "repository.rs"),
+];
 const MAX_ARCHIVE: u64 = 4 * 1024 * 1024;
 const MAX_EXPANDED: u64 = 16 * 1024 * 1024;
 
@@ -56,6 +65,7 @@ struct Manifest {
 }
 
 pub struct Pack {
+    pub format: u32,
     pub lock: TemplateLock,
     pub id: String,
     pub features: Vec<String>,
@@ -69,30 +79,40 @@ pub fn digest(bytes: &[u8]) -> String {
 /// Suggest a checked-out pack to the interactive UI, without changing CLI defaults.
 /// Only inspect known pack locations alongside the current directory and its parents.
 pub fn discover_local(start: &Path, database: crate::config::Database) -> Option<PathBuf> {
-    let folder = if database == crate::config::Database::Sqlite {
-        "rust_sqlite_template_v1"
+    let folders = if database == crate::config::Database::Sqlite {
+        ["rust_sqlite_template_v2", "rust_sqlite_template_v1"]
     } else {
-        "rust_template_v1"
+        ["rust_template_v2", "rust_template_v1"]
     };
     for parent in start.ancestors() {
-        for relative in [format!("miblo_templates/{folder}"), folder.into()] {
-            let candidate = parent.join(relative);
-            if let Ok(pack) = Pack::local(&candidate)
-                && pack.id == database.stack()
-            {
-                return pack.lock.local_path;
+        for folder in folders {
+            for relative in [format!("miblo_templates/{folder}"), folder.into()] {
+                let candidate = parent.join(relative);
+                if let Ok(pack) = Pack::local(&candidate)
+                    && pack.id == database.stack()
+                {
+                    return pack.lock.local_path;
+                }
             }
         }
     }
     None
 }
 
-fn names() -> Vec<&'static str> {
+fn names(format: u32) -> Vec<&'static str> {
     let mut names: Vec<_> = PROJECT_FILES
         .iter()
         .chain(RESOURCE_FILES)
         .map(|(name, _)| *name)
         .collect();
+    if format == 2 {
+        names.extend(
+            LAYERED_PROJECT_FILES
+                .iter()
+                .chain(LAYERED_RESOURCE_FILES)
+                .map(|(name, _)| *name),
+        );
+    }
     names.extend([
         "registry.rs.hbs",
         "resource/migration.sql.hbs",
@@ -102,12 +122,37 @@ fn names() -> Vec<&'static str> {
 }
 
 impl Pack {
+    pub fn project_files(&self) -> Vec<(&'static str, &'static str)> {
+        let mut files = PROJECT_FILES.to_vec();
+        if self.format == 2 {
+            files.extend_from_slice(LAYERED_PROJECT_FILES);
+        }
+        files
+    }
+    pub fn resource_files(&self) -> Vec<(&'static str, &'static str)> {
+        let mut files = RESOURCE_FILES.to_vec();
+        if self.format == 2 {
+            files.extend_from_slice(LAYERED_RESOURCE_FILES);
+        }
+        files
+    }
     pub fn local(path: &Path) -> Result<Self> {
         let path = path
             .canonicalize()
             .context("Template directory not found")?;
         let mut files = BTreeMap::new();
-        for name in names() {
+        ensure!(
+            path.join("manifest.json")
+                .symlink_metadata()?
+                .file_type()
+                .is_file(),
+            "Template manifest must be a regular file"
+        );
+        let manifest: Manifest = serde_json::from_slice(&read_limited(
+            fs::File::open(path.join("manifest.json"))?,
+            MAX_ARCHIVE,
+        )?)?;
+        for name in names(manifest.schema_version) {
             let file = path.join(name);
             ensure!(
                 file.symlink_metadata()?.file_type().is_file(),
@@ -226,14 +271,24 @@ impl Pack {
     }
 
     fn from_files(files: BTreeMap<String, String>, mut lock: TemplateLock) -> Result<Self> {
-        for name in names() {
+        let manifest: Manifest = serde_json::from_str(
+            files
+                .get("manifest.json")
+                .context("Missing template manifest")?,
+        )?;
+        for name in names(manifest.schema_version) {
             ensure!(files.contains_key(name), "Missing template file: {name}");
         }
-        let manifest: Manifest = serde_json::from_str(&files["manifest.json"])?;
         ensure!(
-            manifest.schema_version == 1
+            matches!(manifest.schema_version, 1 | 2)
                 && matches!(manifest.id.as_str(), "rust-axum-mysql" | "rust-axum-sqlite"),
             "Unsupported template pack format or stack"
+        );
+        ensure!(
+            files
+                .keys()
+                .all(|name| names(manifest.schema_version).contains(&name.as_str())),
+            "Unexpected file for this template format"
         );
         if !lock.version.is_empty() {
             ensure!(
@@ -254,6 +309,7 @@ impl Pack {
             }
         }
         Ok(Self {
+            format: manifest.schema_version,
             lock,
             registry,
             id: manifest.id,
@@ -368,7 +424,7 @@ fn unpack(bytes: &[u8]) -> Result<BTreeMap<String, String>> {
         );
         let name = path.to_str().context("Non-UTF8 template path")?.to_owned();
         ensure!(
-            names().contains(&name.as_str()),
+            names(2).contains(&name.as_str()),
             "Unexpected template file: {name}"
         );
         ensure!(
@@ -405,7 +461,7 @@ mod tests {
         assert!(discover_local(&start, crate::config::Database::Mysql).is_none());
 
         let pack = dir.path().join("miblo_templates/rust_template_v1");
-        for name in names() {
+        for name in names(1) {
             let file = pack.join(name);
             fs::create_dir_all(file.parent().unwrap()).unwrap();
             let content = if name == "manifest.json" {
