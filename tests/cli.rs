@@ -476,7 +476,7 @@ fn layered_archive_generates_formatted_sources_and_works_offline() {
             ],
             &root,
         ),
-        "No such file",
+        "Cannot read template file: resource/service.rs.hbs",
     );
     assert_eq!(tree(&root), before);
 }

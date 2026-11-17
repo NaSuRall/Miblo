@@ -7,6 +7,9 @@ Miblo fournit le socle (structure, modèles, routes et base de données). Les r�
 métier, l’authentification, les permissions et le déploiement de l’API appartiennent
 au développeur qui reprend le projet généré.
 
+Présentation complète et scénario de démonstration :
+[brief vidéo Miblo](docs/MIBLO_BRIEF_VIDEO.md) (français).
+
 This development version is **0.9.0**. It supports template formats **1, 2 and 3**, with new projects using format **3** and
 `rust-axum-mysql` or `rust-axum-sqlite`, both version **0.6.0**. Neither publishing a crate nor publishing a GitHub
 Release is performed by the build or packaging scripts.

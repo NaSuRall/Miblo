@@ -10,6 +10,8 @@
   les templates publiés, cache hors ligne et compilation de l’API produite.
 - Paquet Cargo limité aux sources, tests Rust, documentation et licence.
 - Mise à jour de la dépendance transitive retirée `chacha20` vers 0.10.2.
+- Lecture des noms de tables compatible avec les métadonnées MySQL 8.4.
+- Erreur de template incomplet indiquant le fichier manquant, sur tous les systèmes.
 
 ## 0.9.0 — 2026-11-17
 
