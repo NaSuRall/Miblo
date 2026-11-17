@@ -38,9 +38,14 @@ fn resource_data(resource: &Resource, database: Database) -> Value {
         "fields": resource.fields.iter().map(|f| json!({
             "name": f.name, "rust_type": f.kind.rust(), "sql_type": f.kind.sql(database),
             "nullable": f.nullable, "unique": f.unique, "private": f.private,
+            "reference": f.references.as_ref().map(|r| json!({ "table": Resource::new(r.resource.clone(), vec![]).table(), "on_delete": r.on_delete.sql() })),
             "is_string": f.kind == FieldType::String, "is_text": f.kind == FieldType::Text,
             "string_like": matches!(f.kind, FieldType::String | FieldType::Text),
-        })).collect::<Vec<_>>() })
+        })).collect::<Vec<_>>(),
+        "relations": resource.fields.iter().filter_map(|f| f.references.as_ref().map(|r| json!({
+            "field": f.name, "table": Resource::new(r.resource.clone(), vec![]).table(), "on_delete": r.on_delete.sql(),
+            "index": format!("miblo_fk_{}", &digest(format!("{}:{}", resource.table(), f.name).as_bytes())[..16]),
+        }))).collect::<Vec<_>>() })
 }
 
 fn resource_files(
@@ -50,6 +55,11 @@ fn resource_files(
     database: Database,
     files: &mut Files,
 ) -> Result<()> {
+    ensure!(
+        !resource.fields.iter().any(|f| f.references.is_some())
+            || pack.features.iter().any(|f| f == "relations"),
+        "This project's template does not support relations. In Miblo press u to update templates for future models, or run miblo template update; no files were changed"
+    );
     let data = resource_data(resource, database);
     for (template, file) in RESOURCE_FILES {
         files.insert(
@@ -268,6 +278,45 @@ fn next_migration(root: &Path, minimum: u64) -> Result<u64> {
         "Migration version exceeds SQLx range"
     );
     Ok(next)
+}
+
+/// Change only the pinned pack used for future resources. Applied migrations and
+/// application code (including custom edits) are never regenerated.
+pub fn update_template(root: &Path, pack: &Pack, dry_run: bool) -> Result<()> {
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(OperationLock::acquire(root)?)
+    };
+    let (project, mut state) = inspect(root)?;
+    ensure!(
+        pack.id == project.stack,
+        "Template stack does not match the project"
+    );
+    ensure!(
+        pack.features.iter().any(|f| f == "relations"),
+        "Choose a template with relations support (official version 0.3.0 or later)"
+    );
+    // Check the registry contract without replacing the user's formatted file.
+    ensure!(
+        registry_digest(
+            pack.render("registry.rs.hbs", &project_data(&project))?
+                .as_bytes()
+        ) == state.registry_sha256,
+        "This pack uses an incompatible route registry; nothing was changed"
+    );
+    println!(
+        "Template {} -> {} for future models only",
+        state.template.version, pack.lock.version
+    );
+    state.template = pack.lock.clone();
+    let files = BTreeMap::from([(STATE.into(), serde_json::to_string_pretty(&state)? + "\n")]);
+    let originals = BTreeMap::from([(STATE.into(), fs::read(root.join(STATE))?)]);
+    preflight(root, &files, &originals)?;
+    if !dry_run {
+        commit(root, &files, &originals)?;
+    }
+    Ok(())
 }
 
 fn exists(path: &Path) -> Result<bool> {

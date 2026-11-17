@@ -1,4 +1,5 @@
 pub mod health;
+pub mod schema;
 
 use crate::config::{Database, Project};
 use anyhow::{Context, Result, bail, ensure};
@@ -10,6 +11,8 @@ use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, clap::ValueEnum)]
 pub enum Action {
+    /// Inspect actual tables, columns, primary keys and foreign keys (JSON).
+    Schema,
     Check,
     Migrate,
     Init,
@@ -236,6 +239,10 @@ pub fn save_mysql(root: &Path, settings: &MysqlSettings) -> Result<()> {
 }
 
 pub fn run(root: &Path, action: Action) -> Result<()> {
+    if action == Action::Schema {
+        println!("{}", serde_json::to_string_pretty(&schema::inspect(root)?)?);
+        return Ok(());
+    }
     let root = root.canonicalize()?;
     let project = Project::load(&root.join("miblo.yaml"))?;
     let url = connection_url(&root)?;

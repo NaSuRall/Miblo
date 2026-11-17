@@ -424,6 +424,8 @@ fn remote_template_is_pinned_cached_and_reusable_offline() {
         &[
             "new",
             "first",
+            "--template-version",
+            "0.1.0",
             "--template-url",
             &url,
             "--cache-dir",
@@ -437,6 +439,8 @@ fn remote_template_is_pinned_cached_and_reusable_offline() {
         &[
             "new",
             "second",
+            "--template-version",
+            "0.1.0",
             "--template-url",
             &url,
             "--cache-dir",
@@ -475,6 +479,8 @@ fn remote_template_is_pinned_cached_and_reusable_offline() {
             &[
                 "new",
                 "third",
+                "--template-version",
+                "0.1.0",
                 "--template-url",
                 &url,
                 "--cache-dir",
@@ -500,6 +506,8 @@ fn download_rejects_wrong_checksum_and_archive_links() {
             &[
                 "new",
                 "wrong",
+                "--template-version",
+                "0.1.0",
                 "--template-url",
                 &server.url,
                 "--cache-dir",
@@ -517,6 +525,8 @@ fn download_rejects_wrong_checksum_and_archive_links() {
             &[
                 "new",
                 "linked",
+                "--template-version",
+                "0.1.0",
                 "--template-url",
                 &server.url,
                 "--cache-dir",
@@ -658,4 +668,57 @@ fn sqlite_generates_and_migrates_tables_without_manual_configuration() {
         assert_eq!(count, 2);
         pool.close().await;
     });
+}
+
+#[test]
+fn old_projects_opt_into_relation_templates_without_rewriting_code() {
+    let dir = TempDir::new().unwrap();
+    let root = create(dir.path());
+    let fields = ["add", "Member", "product_id:int:ref=Product", "--yes"];
+    let before = tree(&root);
+    failure(cli(&fields, &root), "template does not support relations");
+    assert_eq!(tree(&root), before);
+    let next = pack(&dir.path().join("next"));
+    fs::write(
+        next.join("manifest.json"),
+        r#"{"schema_version":1,"id":"rust-axum-mysql","version":"0.3.0","features":["relations"]}"#,
+    )
+    .unwrap();
+    fs::write(next.join("resource/migration.sql.hbs"), "CREATE TABLE `{{table}}` (id BIGINT PRIMARY KEY{{#each fields}}, `{{name}}` {{sql_type}}{{/each}}{{#each relations}}, FOREIGN KEY (`{{field}}`) REFERENCES `{{table}}` (id) ON DELETE {{on_delete}}{{/each}});\n").unwrap();
+    fs::write(root.join("src/error.rs"), "// custom error handling\n").unwrap();
+    let before = tree(&root);
+    success(cli(
+        &[
+            "template",
+            "update",
+            "--template-dir",
+            next.to_str().unwrap(),
+        ],
+        &root,
+    ));
+    for (path, bytes) in before {
+        if path != root.join(".miblo/state.json") {
+            assert_eq!(fs::read(path).unwrap(), bytes);
+        }
+    }
+    let before = tree(&root);
+    failure(
+        cli(
+            &["add", "Invalid", "missing_id:int:ref=Missing", "--yes"],
+            &root,
+        ),
+        "create that model first",
+    );
+    assert_eq!(tree(&root), before);
+    success(cli(&fields, &root));
+    let migration = fs::read_to_string(root.join("migrations/000002_create_members.sql")).unwrap();
+    assert!(
+        migration
+            .contains("FOREIGN KEY (`product_id`) REFERENCES `products` (id) ON DELETE RESTRICT")
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("src/error.rs")).unwrap(),
+        "// custom error handling\n"
+    );
+    success(cli(&["doctor"], &root));
 }

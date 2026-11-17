@@ -30,8 +30,7 @@ impl Database {
     }
     pub fn version(self) -> &'static str {
         match self {
-            Self::Sqlite => "0.2.0",
-            Self::Mysql => "0.1.0",
+            Self::Sqlite | Self::Mysql => "0.3.0",
         }
     }
 }
@@ -66,6 +65,66 @@ pub struct Field {
     pub unique: bool,
     #[serde(default)]
     pub private: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub references: Option<Reference>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Reference {
+    /// PascalCase resource name; references always target its generated id.
+    pub resource: String,
+    #[serde(default)]
+    pub on_delete: OnDelete,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum OnDelete {
+    #[default]
+    Restrict,
+    Cascade,
+    SetNull,
+}
+impl OnDelete {
+    pub fn sql(self) -> &'static str {
+        match self {
+            Self::Restrict => "RESTRICT",
+            Self::Cascade => "CASCADE",
+            Self::SetNull => "SET NULL",
+        }
+    }
+    pub fn arg(self) -> &'static str {
+        match self {
+            Self::Restrict => "restrict",
+            Self::Cascade => "cascade",
+            Self::SetNull => "set_null",
+        }
+    }
+}
+
+impl Field {
+    pub fn argument(&self) -> String {
+        format!(
+            "{}:{}{}{}{}{}",
+            self.name,
+            match self.kind {
+                FieldType::String => "string",
+                FieldType::Text => "text",
+                FieldType::Int => "int",
+                FieldType::Bool => "bool",
+                FieldType::Float => "float",
+            },
+            if self.nullable { "?" } else { "" },
+            if self.unique { ":unique" } else { "" },
+            if self.private { ":private" } else { "" },
+            self.references.as_ref().map_or(String::new(), |r| format!(
+                ":ref={}:on_delete={}",
+                r.resource,
+                r.on_delete.arg()
+            ))
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
@@ -162,6 +221,23 @@ impl Project {
                 "Duplicate database table: {}",
                 resource.table()
             );
+        }
+        // New tables may reference themselves or previously defined models. This
+        // makes every migration executable in order on SQLite and MySQL alike.
+        for (index, resource) in self.resources.iter().enumerate() {
+            for field in &resource.fields {
+                if let Some(reference) = &field.references {
+                    ensure!(
+                        self.resources[..=index]
+                            .iter()
+                            .any(|r| r.name == reference.resource),
+                        "{}.{} references {}: create that model first",
+                        resource.name,
+                        field.name,
+                        reference.resource
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -314,6 +390,19 @@ impl Resource {
                 "Sensitive field {} must be marked private",
                 field.name
             );
+            if let Some(reference) = &field.references {
+                Resource::new(reference.resource.clone(), vec![]).validate_identity()?;
+                ensure!(
+                    field.kind == FieldType::Int,
+                    "Foreign key {} must use int",
+                    field.name
+                );
+                ensure!(
+                    reference.on_delete != OnDelete::SetNull || field.nullable,
+                    "SET NULL requires a nullable field: {}",
+                    field.name
+                );
+            }
         }
         Ok(())
     }
@@ -355,13 +444,97 @@ pub fn parse_field(value: &str) -> Result<Field> {
         nullable,
         unique: false,
         private: sensitive(parts[0]),
+        references: None,
     };
+    let mut on_delete = None;
     for flag in &parts[2..] {
         match *flag {
             "unique" => field.unique = true,
             "private" => field.private = true,
-            _ => bail!("Unknown field option {flag}; choose unique or private"),
+            flag if flag.starts_with("ref=") => {
+                ensure!(field.references.is_none(), "Duplicate foreign key option");
+                field.references = Some(Reference {
+                    resource: flag[4..].into(),
+                    on_delete: OnDelete::Restrict,
+                });
+            }
+            flag if flag.starts_with("on_delete=") => {
+                ensure!(on_delete.is_none(), "Duplicate on_delete option");
+                on_delete = Some(match &flag[10..] {
+                    "restrict" => OnDelete::Restrict,
+                    "cascade" => OnDelete::Cascade,
+                    "set_null" => OnDelete::SetNull,
+                    _ => bail!("Use on_delete=restrict, cascade or set_null"),
+                });
+            }
+            _ => bail!(
+                "Unknown field option {flag}; choose unique, private, ref=Model or on_delete=restrict|cascade|set_null"
+            ),
         }
     }
+    if let Some(on_delete) = on_delete {
+        field
+            .references
+            .as_mut()
+            .context("on_delete requires ref=Model")?
+            .on_delete = on_delete;
+    }
     Ok(field)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn relations_validate_targets_order_types_and_actions() {
+        let group = Resource::new("Group".into(), vec![parse_field("name:string").unwrap()]);
+        let field = parse_field("group_id:int?:unique:ref=Group:on_delete=set_null").unwrap();
+        assert_eq!(
+            field.argument(),
+            "group_id:int?:unique:ref=Group:on_delete=set_null"
+        );
+        let member = Resource::new("Member".into(), vec![field]);
+        Project::new("example".into(), 3000, vec![group.clone(), member.clone()])
+            .validate()
+            .unwrap();
+        assert!(
+            Project::new("example".into(), 3000, vec![member.clone(), group.clone()])
+                .validate()
+                .is_err()
+        );
+        for field in [
+            "group_id:string:ref=Group",
+            "group_id:int:ref=Group:on_delete=set_null",
+            "group_id:int:ref=Group;DROP",
+            "group_id:int:ref=Missing",
+        ] {
+            let resource = Resource::new("Member".into(), vec![parse_field(field).unwrap()]);
+            assert!(
+                Project::new("example".into(), 3000, vec![group.clone(), resource])
+                    .validate()
+                    .is_err(),
+                "{field}"
+            );
+        }
+        for field in [
+            "group_id:int:on_delete=cascade",
+            "group_id:int:ref=Group:ref=Group",
+            "group_id:int:ref=Group:on_delete=drop",
+        ] {
+            assert!(parse_field(field).is_err());
+        }
+        let folder = Resource::new(
+            "Folder".into(),
+            vec![parse_field("parent_id:int?:ref=Folder:on_delete=set_null").unwrap()],
+        );
+        Project::new("example".into(), 3000, vec![folder])
+            .validate()
+            .unwrap();
+    }
+    #[test]
+    fn absent_relations_preserve_legacy_serialization() {
+        let original = "schema_version: 1\nname: sample\nstack: rust-axum-mysql\nport: 3000\nresources:\n- name: User\n  path: /users\n  fields:\n  - name: name\n    type: string\n    nullable: false\n    unique: false\n    private: false\n";
+        let config: Project = serde_yaml::from_str(original).unwrap();
+        assert_eq!(serde_yaml::to_string(&config).unwrap(), original);
+    }
 }

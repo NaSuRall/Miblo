@@ -28,6 +28,7 @@ parser.add_argument('--miblo', type=Path, required=True)
 parser.add_argument('--templates', type=Path, required=True)
 parser.add_argument('--database', choices=['sqlite', 'mysql'], default='sqlite')
 parser.add_argument('--capture-json', type=Path)
+parser.add_argument('--schema-capture-json', type=Path)
 parser.add_argument('--api-target-dir', type=Path, help='Build and test real SQLite CRUD routes in the TUI')
 args = parser.parse_args()
 
@@ -197,7 +198,27 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
                 assert connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='products'").fetchone()
             ui.send('b'); ui.wait('Tester la connexion')
             ui.send('\r'); ui.wait('connexion vérifiée'); ui.wait('Aucune action en cours')
-        ui.send('\x1b[Z\r'); ui.wait('src/resources/product/handlers.rs')
+        if args.database == 'sqlite':
+            ui.send('a'); ui.wait('Nom du modèle'); ui.send('Stock\r'); ui.wait('Nom du champ')
+            ui.send('location\r'); ui.wait('Type du champ'); ui.send('\r'); ui.wait('Options du champ')
+            ui.send('\r'); ui.wait('Champs de la ressource')
+            ui.send('\x1b[B\x1b[B\x1b[B\r'); ui.wait('Modèle / table à référencer')
+            ui.send('\r'); ui.wait('Nom de la clé étrangère'); ui.wait('product_id')
+            ui.send('\r'); ui.wait('Options du champ'); ui.send(' \r'); ui.wait('Si la ligne référencée')
+            ui.send('\x1b[B\x1b[B\r'); ui.wait('Champs de la ressource')
+            ui.send('\x1b[B\r'); ui.wait('Adresse de la collection'); ui.send('\r'); ui.wait('Ajouter cette ressource ?')
+            ui.wait('SET NULL'); ui.send('\r'); ui.wait('2 ressource(s)'); ui.wait('Migrations à jour'); ui.wait('Aucune action en cours')
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                keys = connection.execute("PRAGMA foreign_key_list('stocks')").fetchall()
+                assert keys[0][2:5] == ('products', 'product_id', 'id') and keys[0][6] == 'SET NULL'
+            ui.send('d'); ui.wait('Schéma réel'); ui.wait('Tables (2)'); ui.send('j')
+            ui.wait('TABLE stocks'); ui.wait('product_id → products.id'); ui.wait('SET NULL')
+            if args.schema_capture_json: ui.capture(args.schema_capture_json)
+            ui.send('p'); ui.wait('Schéma déclaré'); ui.send('j'); ui.wait('TABLE stocks')
+            ui.send('d'); ui.wait('Réponse HTTP')
+            ui.send('u'); ui.wait('Templates pour les futurs modèles'); ui.send('\x1b[B\r'); ui.wait('Dossier du nouveau template')
+            ui.send('\r'); ui.wait('Utiliser ce template'); ui.send('\r'); ui.wait('Templates : exit status: 0'); ui.wait('Aucune action en cours')
+        ui.send(':routes\r\x1b[Z\x1b[Z\r'); ui.wait('src/resources/product/handlers.rs')
         ui.send('?'); ui.wait('NAVIGATION'); ui.send('\x1b'); ui.wait_absent('NAVIGATION')
         ui.send('t'); ui.wait('Thème modifié')
         if args.capture_json: ui.capture(args.capture_json)
@@ -243,7 +264,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
         ui.send('s'); ui.wait('API arrêtée')
         assert stopped(first_pid), f'API child {first_pid} survived stop'
         if args.database == 'sqlite':
-            (project / 'migrations/000002_extra.sql').write_text('CREATE TABLE extra (id INTEGER PRIMARY KEY);')
+            (project / 'migrations/000003_extra.sql').write_text('CREATE TABLE extra (id INTEGER PRIMARY KEY);')
             ui.wait('Mise à jour BDD requise')
             # Reopening must detect pending migrations from the database, not cached UI state.
             ui.send(':open ' + str(project) + '\r'); ui.wait('Mise à jour BDD requise')

@@ -1,5 +1,5 @@
 use super::*;
-use crate::config::{Field, FieldType, Resource, parse_field, project_name};
+use crate::config::{Field, FieldType, OnDelete, Reference, Resource, parse_field, project_name};
 
 #[derive(Clone, Copy)]
 pub(super) enum InputKind {
@@ -20,6 +20,9 @@ pub(super) enum InputKind {
     DbPassword,
     HttpPath,
     HttpBody,
+    RelationName,
+    TemplateLocal,
+    TemplateUrl,
 }
 #[derive(Clone, Copy)]
 pub(super) enum ChoiceKind {
@@ -36,6 +39,10 @@ pub(super) enum ChoiceKind {
     DbSave,
     HttpMethod,
     HttpConfirm,
+    RelationTarget,
+    RelationDelete,
+    TemplateSource,
+    TemplateConfirm,
 }
 #[derive(Clone)]
 pub(super) enum Dialog {
@@ -76,6 +83,11 @@ pub(super) struct AddDraft {
     fields: Vec<Field>,
     pending: Option<Field>,
 }
+#[derive(Default)]
+pub(super) struct TemplateDraft {
+    source: usize,
+    location: String,
+}
 
 impl App {
     pub(super) fn start_route_test(&mut self) -> Result<()> {
@@ -85,6 +97,7 @@ impl App {
             .get(self.route_selected)
             .context("Ouvre un projet pour tester ses routes")?
             .clone();
+        self.show_schema = false;
         // Every request exposes its path, including query parameters, before sending.
         self.input(
             InputKind::HttpPath,
@@ -95,6 +108,7 @@ impl App {
     }
     pub(super) fn custom_request(&mut self) -> Result<()> {
         ensure!(self.project.is_some(), "Ouvre un projet d’abord");
+        self.show_schema = false;
         ensure!(!self.tester.pending, "Une requête HTTP est déjà en cours");
         self.request_draft = http::Request::default();
         self.choose(
@@ -185,6 +199,8 @@ impl App {
                 "Tester la route sélectionnée",
                 "Requête HTTP personnalisée",
                 "Afficher / masquer l’aperçu du code",
+                "Voir le schéma de la base de données",
+                "Mettre à jour les templates des futurs modèles",
             ],
             Vec::new(),
             0,
@@ -475,6 +491,7 @@ impl App {
                         "Nombre entier",
                         "Nombre décimal",
                         "Oui / Non",
+                        "Clé étrangère — relation vers un modèle",
                     ],
                     Vec::new(),
                     0,
@@ -494,12 +511,17 @@ impl App {
                 let mut description = vec![format!("{} → {}", resource.name, resource.path)];
                 description.extend(resource.fields.iter().map(|f| {
                     format!(
-                        "{} : {:?}{}{}{}",
+                        "{} : {:?}{}{}{}{}",
                         f.name,
                         f.kind,
                         if f.nullable { " • facultatif" } else { "" },
                         if f.unique { " • unique" } else { "" },
-                        if f.private { " • privé" } else { "" }
+                        if f.private { " • privé" } else { "" },
+                        f.references.as_ref().map_or(String::new(), |r| format!(
+                            " → {}.id · {}",
+                            r.resource,
+                            r.on_delete.sql()
+                        ))
                     )
                 }));
                 description.push("Les fichiers existants seront préservés.".into());
@@ -527,6 +549,46 @@ impl App {
                     description,
                     0,
                 );
+            }
+            InputKind::RelationName => {
+                let mut field = self
+                    .add_draft
+                    .pending
+                    .clone()
+                    .context("Relation manquante")?;
+                field.name = value.into();
+                let mut fields = self.add_draft.fields.clone();
+                fields.push(field.clone());
+                Resource::new(self.add_draft.name.clone(), fields).validate()?;
+                self.add_draft.pending = Some(field);
+                self.field_options()?;
+            }
+            InputKind::TemplateLocal => {
+                let pack = crate::templates::Pack::local(Path::new(value))?;
+                ensure!(
+                    self.project.as_ref().is_some_and(|p| p.stack == pack.id),
+                    "Choisis un template pour la même base de données"
+                );
+                ensure!(
+                    pack.features.iter().any(|f| f == "relations"),
+                    "Ce template ne prend pas en charge les relations"
+                );
+                self.template_draft.location = Path::new(value)
+                    .canonicalize()?
+                    .to_string_lossy()
+                    .into_owned();
+                self.confirm_template_update();
+            }
+            InputKind::TemplateUrl => {
+                let url = reqwest::Url::parse(value)?;
+                ensure!(
+                    url.scheme() == "https"
+                        || (url.scheme() == "http"
+                            && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))),
+                    "Utilise HTTPS (ou HTTP local)"
+                );
+                self.template_draft.location = value.into();
+                self.confirm_template_update();
             }
             InputKind::HttpPath => {
                 http::request_url(&self.base_url, value)?;
@@ -616,8 +678,25 @@ impl App {
         match kind {
             ChoiceKind::Palette => self.command(
                 [
-                    "new", "open", "add", "run", "stop", "check", "test", "doctor", "edit",
-                    "refresh", "theme", "help", "quit", "db", "route", "request", "code",
+                    "new",
+                    "open",
+                    "add",
+                    "run",
+                    "stop",
+                    "check",
+                    "test",
+                    "doctor",
+                    "edit",
+                    "refresh",
+                    "theme",
+                    "help",
+                    "quit",
+                    "db",
+                    "route",
+                    "request",
+                    "code",
+                    "schema",
+                    "templates",
                 ][selected],
             )?,
             ChoiceKind::HttpMethod => {
@@ -678,6 +757,86 @@ impl App {
                     _ => self.input(InputKind::NewUrl, "URL du template .tar.gz", ""),
                 }
             }
+            ChoiceKind::FieldType if selected == 5 => self.choose_relation_target()?,
+            ChoiceKind::RelationTarget => {
+                let target = self
+                    .relation_targets()
+                    .get(selected)
+                    .context("Modèle cible manquant")?
+                    .clone();
+                let mut field = self
+                    .add_draft
+                    .pending
+                    .take()
+                    .unwrap_or(parse_field(&format!("{}_id:int", target.module()))?);
+                field.kind = FieldType::Int;
+                field.references = Some(Reference {
+                    resource: target.name,
+                    on_delete: OnDelete::Restrict,
+                });
+                let name = field.name.clone();
+                self.add_draft.pending = Some(field);
+                self.input(InputKind::RelationName, "Nom de la clé étrangère", &name);
+            }
+            ChoiceKind::RelationDelete => {
+                let mut field = self
+                    .add_draft
+                    .pending
+                    .clone()
+                    .context("Relation manquante")?;
+                field
+                    .references
+                    .as_mut()
+                    .context("Relation manquante")?
+                    .on_delete =
+                    [OnDelete::Restrict, OnDelete::Cascade, OnDelete::SetNull][selected];
+                self.store_field(field)?;
+            }
+            ChoiceKind::TemplateSource => {
+                self.template_draft.source = selected;
+                match selected {
+                    0 => self.confirm_template_update(),
+                    1 => {
+                        let root = self.ready_for_job()?;
+                        let database = self.project.as_ref().context("Aucun projet")?.database();
+                        let path = crate::templates::discover_local(root, database)
+                            .map(|p| p.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        self.input(
+                            InputKind::TemplateLocal,
+                            "Dossier du nouveau template",
+                            &path,
+                        );
+                    }
+                    _ => self.input(
+                        InputKind::TemplateUrl,
+                        "URL du template 0.3.0 (.tar.gz)",
+                        "",
+                    ),
+                }
+            }
+            ChoiceKind::TemplateConfirm => {
+                if selected == 0 {
+                    let root = self.ready_for_job()?.as_os_str().to_owned();
+                    let mut args =
+                        vec!["template".into(), "update".into(), "--project".into(), root];
+                    match self.template_draft.source {
+                        1 => args.extend([
+                            "--template-dir".into(),
+                            self.template_draft.location.clone().into(),
+                        ]),
+                        2 => args.extend([
+                            "--template-url".into(),
+                            self.template_draft.location.clone().into(),
+                        ]),
+                        _ => args.extend([
+                            "--template-base-url".into(),
+                            crate::templates::DEFAULT_BASE.into(),
+                        ]),
+                    }
+                    self.cli_job(args, "Templates", None, true)?;
+                }
+            }
             ChoiceKind::FieldType => {
                 let field = self.add_draft.pending.as_mut().context("Champ manquant")?;
                 field.kind = [
@@ -687,23 +846,7 @@ impl App {
                     FieldType::Float,
                     FieldType::Bool,
                 ][selected];
-                let unique_available = field.kind != FieldType::Text;
-                let private_available = !field.private;
-                let mut items = vec![("Facultatif — autoriser null".into(), false)];
-                if unique_available {
-                    items.push(("Unique — interdire les doublons".into(), false));
-                }
-                if private_available {
-                    items.push(("Privé — masquer dans les réponses".into(), false));
-                } else {
-                    self.notice = "Ce champ sensible sera masqué dans les réponses".into();
-                }
-                self.dialog = Some(Dialog::Options {
-                    items,
-                    selected: 0,
-                    unique_available,
-                    private_available,
-                });
+                self.field_options()?;
             }
             ChoiceKind::NextField => match selected {
                 0 => self.input(InputKind::FieldName, "Nom du champ", ""),
@@ -712,6 +855,10 @@ impl App {
                     "Adresse de la collection",
                     &self.add_draft.path.clone(),
                 ),
+                3 => {
+                    self.add_draft.pending = None;
+                    self.choose_relation_target()?;
+                }
                 _ => self.notice = "Ajout annulé".into(),
             },
             ChoiceKind::NewConfirm if selected == 0 => self.generate_new()?,
@@ -728,6 +875,8 @@ impl App {
                 0 => self.database_action(Action::Check)?,
                 1 => self.confirm_database_action(Action::Migrate)?,
                 2 => self.confirm_database_action(Action::Init)?,
+                4 => self.toggle_schema()?,
+                5 => self.start_template_update()?,
                 3 if self
                     .project
                     .as_ref()
@@ -770,6 +919,30 @@ impl App {
         if private_available {
             field.private = items[index].1;
         }
+        if field.references.is_some() {
+            let mut choices = vec![
+                "Bloquer la suppression si des lignes font référence (RESTRICT)",
+                "Supprimer aussi les lignes liées (CASCADE)",
+            ];
+            if field.nullable {
+                choices.push("Garder les lignes et vider le lien (SET NULL)");
+            }
+            self.add_draft.pending = Some(field);
+            self.choose(
+                ChoiceKind::RelationDelete,
+                "Si la ligne référencée est supprimée…",
+                &choices,
+                vec![
+                    "La base appliquera cette règle automatiquement.".into(),
+                    "CASCADE supprime réellement les lignes liées.".into(),
+                ],
+                0,
+            );
+            return Ok(());
+        }
+        self.store_field(field)
+    }
+    fn store_field(&mut self, field: Field) -> Result<()> {
         let mut fields = self.add_draft.fields.clone();
         fields.push(field);
         Resource::new(self.add_draft.name.clone(), fields.clone()).validate()?;
@@ -778,11 +951,121 @@ impl App {
         self.choose(
             ChoiceKind::NextField,
             "Champs de la ressource",
-            &["Ajouter un autre champ", "Terminer et générer", "Annuler"],
+            &[
+                "Ajouter un autre champ",
+                "Terminer et générer",
+                "Annuler",
+                "Ajouter une relation (clé étrangère)",
+            ],
             vec![format!("{} champ(s) définis", self.add_draft.fields.len())],
             0,
         );
         Ok(())
+    }
+    fn field_options(&mut self) -> Result<()> {
+        let field = self.add_draft.pending.as_ref().context("Champ manquant")?;
+        let unique_available = field.kind != FieldType::Text;
+        let private_available = !field.private;
+        let mut items = vec![("Facultatif — autoriser null".into(), false)];
+        if unique_available {
+            items.push((
+                if field.references.is_some() {
+                    "Unique — une seule ligne par référence (1 à 1)"
+                } else {
+                    "Unique — interdire les doublons"
+                }
+                .into(),
+                false,
+            ));
+        }
+        if private_available {
+            items.push(("Privé — masquer dans les réponses".into(), false));
+        } else {
+            self.notice = "Ce champ sensible sera masqué dans les réponses".into();
+        }
+        self.dialog = Some(Dialog::Options {
+            items,
+            selected: 0,
+            unique_available,
+            private_available,
+        });
+        Ok(())
+    }
+    fn relation_targets(&self) -> Vec<Resource> {
+        let mut models = self
+            .project
+            .as_ref()
+            .map_or(vec![], |p| p.resources.clone());
+        models.push(Resource::new(self.add_draft.name.clone(), vec![]));
+        models
+    }
+    fn choose_relation_target(&mut self) -> Result<()> {
+        ensure!(!self.add_draft.name.is_empty(), "Donne un nom au modèle");
+        let labels: Vec<_> = self
+            .relation_targets()
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} → {}.id{}",
+                    r.name,
+                    r.table(),
+                    if r.name == self.add_draft.name {
+                        " (ce modèle)"
+                    } else {
+                        ""
+                    }
+                )
+            })
+            .collect();
+        let items: Vec<_> = labels.iter().map(String::as_str).collect();
+        self.choose(
+            ChoiceKind::RelationTarget,
+            "Modèle / table à référencer",
+            &items,
+            vec![
+                "La clé primaire id est automatique dans chaque table.".into(),
+                "Une clé étrangère impose l’existence de la ligne référencée.".into(),
+            ],
+            0,
+        );
+        Ok(())
+    }
+    pub(super) fn start_template_update(&mut self) -> Result<()> {
+        let (_, state) = generation::inspect(self.ready_for_job()?)?;
+        self.template_draft = TemplateDraft::default();
+        self.choose(
+            ChoiceKind::TemplateSource,
+            "Templates pour les futurs modèles",
+            &[
+                "GitHub Releases — version 0.3.0 avec relations",
+                "Dossier local",
+                "URL personnalisée",
+            ],
+            vec![
+                format!("Version actuelle : {}", state.template.version),
+                "Les fichiers existants et migrations appliquées sont conservés.".into(),
+            ],
+            0,
+        );
+        Ok(())
+    }
+    fn confirm_template_update(&mut self) {
+        let source = if self.template_draft.source == 0 {
+            "GitHub Releases · version 0.3.0".into()
+        } else {
+            self.template_draft.location.clone()
+        };
+        self.choose(
+            ChoiceKind::TemplateConfirm,
+            "Utiliser ce template pour les futurs modèles ?",
+            &["Mettre à jour", "Annuler"],
+            vec![
+                source,
+                "La configuration du template sera mise à jour.".into(),
+                "Le code existant et les migrations appliquées sont conservés.".into(),
+            ],
+            0,
+        );
     }
     fn draft_resource(&self, path: &str) -> Resource {
         Resource {
@@ -844,24 +1127,8 @@ impl App {
             "--yes".into(),
         ];
         for field in &self.add_draft.fields {
-            let kind = match field.kind {
-                FieldType::String => "string",
-                FieldType::Text => "text",
-                FieldType::Int => "int",
-                FieldType::Bool => "bool",
-                FieldType::Float => "float",
-            };
             args.push("--field".into());
-            args.push(
-                format!(
-                    "{}:{kind}{}{}{}",
-                    field.name,
-                    if field.nullable { "?" } else { "" },
-                    if field.unique { ":unique" } else { "" },
-                    if field.private { ":private" } else { "" }
-                )
-                .into(),
-            );
+            args.push(field.argument().into());
         }
         self.cli_job(args, "Ajout de ressource", None, false)?;
         self.migrate_after_add = true;
@@ -887,6 +1154,8 @@ impl App {
                 } else {
                     "Fermer"
                 },
+                "Voir le schéma de la base",
+                "Mettre à jour les templates",
             ],
             vec![
                 if mysql {
@@ -953,6 +1222,7 @@ impl App {
         );
         let root = self.ready_for_job()?.as_os_str().to_owned();
         let arg = match action {
+            Action::Schema => return self.toggle_schema(),
             Action::Check => "check",
             Action::Migrate => "migrate",
             Action::Init => "init",

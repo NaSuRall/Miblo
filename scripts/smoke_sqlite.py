@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate and run a real SQLite API, including empty-project startup and CRUD."""
 import argparse
+import relation_checks
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
@@ -74,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         assert (project / '.env').exists() and not (project / 'compose.yaml').exists()
         if args.remote:
             lock = json.loads((project / '.miblo/state.json').read_text())['template']
-            assert lock['local_path'] is None and lock['url'].endswith('/v0.2.0/rust-axum-sqlite.tar.gz')
+            assert lock['local_path'] is None and lock['url'].endswith('/v0.3.0/rust-axum-sqlite.tar.gz')
         cargo('build')
         assert not (project / 'miblo.sqlite').exists()
         api = start()
@@ -86,13 +87,16 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         before = custom.read_bytes()
         cli('add', 'Category', 'label:string', '--yes', '--offline')
         assert custom.read_bytes() == before
+        relation_checks.add_models(cli)
         cli('db', 'migrate')
         cli('db', 'check')
         with sqlite3.connect(project / 'miblo.sqlite') as connection:
             assert connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('users','categories')").fetchone()[0] == 2
+        relation_checks.inspect_schema(miblo, project, env)
         cargo('test')
         cargo('build')
         api = start()
+        relation_checks.requests(request)
         value = dict(email='first@example.test', name='First', note='hello', score=1.5, active=True, token='private-example')
         created = request('POST', '/users', value, 201)
         assert 'token' not in created and created['active'] is True

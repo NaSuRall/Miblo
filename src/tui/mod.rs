@@ -1,6 +1,7 @@
 mod forms;
 mod http;
 mod process;
+mod schema;
 mod status;
 mod view;
 
@@ -31,6 +32,8 @@ enum Focus {
     Resources,
     Routes,
     Response,
+    Tables,
+    Schema,
 }
 #[derive(Clone)]
 struct Entry {
@@ -81,6 +84,9 @@ struct App {
     restart_required: bool,
     show_code: bool,
     code_visible: bool,
+    show_schema: bool,
+    schema: schema::Browser,
+    template_draft: forms::TemplateDraft,
 }
 
 pub fn run(project: Option<PathBuf>) -> Result<()> {
@@ -168,6 +174,9 @@ impl App {
             restart_required: false,
             show_code: true,
             code_visible: true,
+            show_schema: false,
+            schema: schema::Browser::default(),
+            template_draft: forms::TemplateDraft::default(),
         }
     }
 
@@ -180,6 +189,8 @@ impl App {
         let project = Project::load(&root.join("miblo.yaml"))?;
         self.root = Some(root);
         self.project = Some(project);
+        self.schema = schema::Browser::default();
+        self.show_schema = false;
         self.tester = http::Tester::default();
         self.route_selected = 0;
         self.api_failure = None;
@@ -213,6 +224,10 @@ impl App {
             return Ok(());
         };
         self.project = Some(Project::load(&root.join("miblo.yaml"))?);
+        self.schema.project(self.project.as_ref().unwrap());
+        if self.show_schema {
+            self.schema.refresh(&root);
+        }
         self.routes = http::routes(self.project.as_ref().unwrap());
         self.route_selected = self.route_selected.min(self.routes.len().saturating_sub(1));
         self.base_url = crate::runtime::http_base(&root).unwrap_or_default();
@@ -343,6 +358,10 @@ impl App {
                 self.open_selected()?
             }
             KeyCode::Enter if self.focus == Focus::Routes => self.start_route_test()?,
+            KeyCode::Enter if self.focus == Focus::Tables => self.focus = Focus::Schema,
+            KeyCode::Char('d') => self.toggle_schema()?,
+            KeyCode::Char('p') if self.show_schema => self.schema.toggle_source(),
+            KeyCode::Char('u') => self.start_template_update()?,
             KeyCode::Char('x') => self.start_route_test()?,
             KeyCode::Char('f') => self.custom_request()?,
             KeyCode::Char('v') => {
@@ -380,6 +399,15 @@ impl App {
             Focus::Code => (&mut self.code_scroll, self.code.len()),
             Focus::Routes => (&mut self.route_selected, self.routes.len()),
             Focus::Response => (&mut self.tester.scroll, self.tester.lines.len()),
+            Focus::Tables => {
+                self.schema.scroll = 0;
+                let length = self.schema.tables().len();
+                (&mut self.schema.selected, length)
+            }
+            Focus::Schema => {
+                let length = self.schema.details().len();
+                (&mut self.schema.scroll, length)
+            }
             Focus::Logs => {
                 self.log_scroll = self
                     .log_scroll
@@ -404,6 +432,7 @@ impl App {
         self.logs.push_back(clean(&message));
     }
     fn tick(&mut self) {
+        self.schema.tick();
         if self.tester.tick()
             && let Some(reply) = &self.tester.reply
         {
@@ -626,7 +655,12 @@ impl App {
             "q" | "quit" => self.request_quit()?,
             "new" => self.start_new()?,
             "add" => self.start_add()?,
-            "routes" => self.focus = Focus::Routes,
+            "routes" => {
+                self.show_schema = false;
+                self.focus = Focus::Routes;
+            }
+            "schema" => self.toggle_schema()?,
+            "templates" => self.start_template_update()?,
             "route" => self.start_route_test()?,
             "request" | "http" => self.custom_request()?,
             "code" => self.show_code = !self.show_code,
@@ -659,12 +693,12 @@ impl App {
     }
 
     fn cycle_focus(&mut self, backwards: bool) {
-        let mut order = vec![
-            Focus::Resources,
-            Focus::Files,
-            Focus::Routes,
-            Focus::Response,
-        ];
+        let mut order = vec![Focus::Resources, Focus::Files];
+        if self.show_schema {
+            order.extend([Focus::Tables, Focus::Schema]);
+        } else {
+            order.extend([Focus::Routes, Focus::Response]);
+        }
         if self.code_visible {
             order.push(Focus::Code);
         }
@@ -674,6 +708,24 @@ impl App {
             .position(|focus| *focus == self.focus)
             .unwrap_or(0);
         self.focus = order[(index + if backwards { order.len() - 1 } else { 1 }) % order.len()];
+    }
+
+    fn toggle_schema(&mut self) -> Result<()> {
+        let root = self
+            .root
+            .as_ref()
+            .context("Ouvre un projet pour voir sa base de données")?;
+        self.show_schema = !self.show_schema;
+        if self.show_schema {
+            self.schema.refresh(root);
+            self.focus = Focus::Tables;
+            self.notice =
+                "Schéma réel de la base · p : modèles déclarés · F5 : actualiser · d : routes"
+                    .into();
+        } else {
+            self.focus = Focus::Routes;
+        }
+        Ok(())
     }
 
     fn api_badge(&self) -> status::Badge {
@@ -952,5 +1004,37 @@ mod tests {
         assert!(app.load_file(Path::new(".env")).is_err());
         let outside = tempfile::NamedTempFile::new().unwrap();
         assert!(app.load_file(outside.path()).is_err());
+    }
+
+    #[test]
+    fn schema_view_shows_keys_and_relations_on_compact_terminals() {
+        use crate::config::{Resource, parse_field};
+        let mut app = App::new();
+        let project = Project::new(
+            "schema-test".into(),
+            3000,
+            vec![
+                Resource::new("Group".into(), vec![parse_field("name:string").unwrap()]),
+                Resource::new(
+                    "User".into(),
+                    vec![parse_field("group_id:int:ref=Group").unwrap()],
+                ),
+            ],
+        );
+        app.schema.project(&project);
+        app.project = Some(project);
+        app.show_schema = true;
+        app.schema.planned = true;
+        app.schema.selected = 1;
+        app.focus = Focus::Schema;
+        let rendered = screen(&mut app, 80, 24);
+        for label in ["Schéma déclaré", "TABLE users", "PK"] {
+            assert!(rendered.contains(label), "missing {label}");
+        }
+        app.schema.scroll = 3;
+        assert!(screen(&mut app, 80, 24).contains("group_id"));
+        app.schema.scroll = 6;
+        assert!(screen(&mut app, 80, 24).contains("group_id → groups.id"));
+        assert!(!app.code_visible);
     }
 }

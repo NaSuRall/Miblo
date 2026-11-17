@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test the real generated API against an isolated MySQL server. No existing DB is used."""
 import argparse
+import relation_checks
 import json
 import os
 from pathlib import Path
@@ -78,8 +79,12 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
         subprocess.run([miblo, 'add', 'resource', 'Category', '--field', 'label:string', '--yes', '--offline'], cwd=project, check=True, env=generation_env)
         assert custom.read_bytes() == before
         assert (project / 'migrations/000002_create_categories.sql').is_file()
+        def cli(*arguments):
+            subprocess.run([miblo, *arguments], cwd=project, check=True, env=generation_env)
+        relation_checks.add_models(cli)
         subprocess.run([miblo, 'db', 'migrate'], cwd=project, check=True, env=generation_env)
         subprocess.run([miblo, 'db', 'migrate'], cwd=project, check=True, env=generation_env)
+        relation_checks.inspect_schema(miblo, project, generation_env)
         cargo_args = ['--target-dir', str(args.target_dir.resolve())] if args.target_dir else []
         subprocess.run(['cargo', 'test', '--locked', *cargo_args], cwd=project, check=True, timeout=300)
         subprocess.run(['cargo', 'build', '--locked', *cargo_args], cwd=project, check=True, timeout=300)
@@ -104,6 +109,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
             try: request('GET', '/health'); break
             except (OSError, urllib.error.URLError): time.sleep(.1)
         else: raise RuntimeError('Generated API did not become ready')
+        relation_checks.requests(request)
         value = dict(title='first', description='hello', price=1.5, quantity=2, active=True, token='never-return-this')
         created = request('POST', '/products', value, 201)
         resource = f'/products/{created["id"]}'

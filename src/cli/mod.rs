@@ -47,6 +47,34 @@ enum Command {
         #[arg(long, default_value = ".")]
         project: PathBuf,
     },
+    /// Update templates for future models without rewriting application code.
+    Template {
+        #[command(subcommand)]
+        command: TemplateCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum TemplateCommand {
+    Update(TemplateArgs),
+}
+
+#[derive(Args)]
+struct TemplateArgs {
+    #[arg(long, default_value = ".")]
+    project: PathBuf,
+    #[arg(long, conflicts_with = "template_url")]
+    template_dir: Option<PathBuf>,
+    #[arg(long)]
+    template_url: Option<String>,
+    #[arg(long)]
+    template_version: Option<String>,
+    #[arg(long, env = "MIBLO_TEMPLATE_BASE_URL", default_value = templates::DEFAULT_BASE)]
+    template_base_url: String,
+    #[arg(long)]
+    dry_run: bool,
+    #[command(flatten)]
+    cache: CacheArgs,
 }
 
 #[derive(Args)]
@@ -169,6 +197,35 @@ fn execute(command: Command) -> Result<()> {
         Command::Run { project } => runtime::start(&project),
         Command::Doctor { project } => runtime::doctor(&project),
         Command::Db { action, project } => crate::database::run(&project, action),
+        Command::Template {
+            command: TemplateCommand::Update(args),
+        } => {
+            let (project, _) = generation::inspect(&args.project)?;
+            let pack = if let Some(path) = args.template_dir {
+                Pack::local(&path)?
+            } else {
+                let version = args
+                    .template_version
+                    .unwrap_or_else(|| project.database().version().into());
+                ensure!(
+                    !version.is_empty()
+                        && version
+                            .bytes()
+                            .all(|c| c.is_ascii_alphanumeric() || b".-_".contains(&c)),
+                    "Invalid template version"
+                );
+                let url = args.template_url.unwrap_or_else(|| {
+                    format!(
+                        "{}/v{}/{}.tar.gz",
+                        args.template_base_url.trim_end_matches('/'),
+                        version,
+                        project.stack
+                    )
+                });
+                Pack::remote(&url, &version, None, args.cache.offline, &args.cache.path())?
+            };
+            generation::update_template(&args.project, &pack, args.dry_run)
+        }
     }
 }
 

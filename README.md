@@ -4,8 +4,8 @@ Create and extend a Rust REST API using Axum, SQLx and SQLite or MySQL. The CLI 
 project settings and resources, downloads a versioned Handlebars template pack,
 and writes a normal Rust project that runs independently of Miblo.
 
-This development version is **0.4.0**. It uses template format **1** with
-`rust-axum-mysql` **0.1.0** or `rust-axum-sqlite` **0.2.0**. Neither publishing a crate nor publishing a GitHub
+This development version is **0.5.0**. It uses template format **1** with
+`rust-axum-mysql` or `rust-axum-sqlite`, both version **0.3.0**. Neither publishing a crate nor publishing a GitHub
 Release is performed by the build or packaging scripts.
 
 ## Install from this checkout
@@ -23,7 +23,7 @@ There is no dependency on an installed `sqlx-cli`.
 Once this version is published, installation will be:
 
 ```sh
-cargo install miblo_cli_v2 --version 0.4.0 --locked
+cargo install miblo_cli_v2 --version 0.5.0 --locked
 ```
 
 ## Full-screen API workspace
@@ -49,6 +49,9 @@ current session and adapts its panels to the terminal size (minimum 70 × 20).
 | `:` | Enter a command |
 | `n` / `o` / `a` | New API / open project / add model + SQL table + CRUD |
 | `b` | Database connection, initialization and migrations |
+| `d` | View database schema / return to routes |
+| `p` (schema view) | Switch between actual database and declared models |
+| `u` | Update templates used for future models |
 | `r` / `s` | Start / stop the API |
 | `c` | Run `cargo check` |
 | `x` | Test the selected route (path / identifier / query / JSON) |
@@ -59,7 +62,7 @@ current session and adapts its panels to the terminal size (minimum 70 × 20).
 | `?` / `q` | Help / quit |
 
 Commands include `:new`, `:open path/to/project`, `:add`, `:run`, `:stop`,
-`:db`, `:migrate`, `:routes`, `:route`, `:request`, `:code`, `:check`, `:test`, `:doctor`, `:edit`, `:refresh`, `:theme`, `:help`, `:quit`.
+`:db`, `:migrate`, `:schema`, `:templates`, `:routes`, `:route`, `:request`, `:code`, `:check`, `:test`, `:doctor`, `:edit`, `:refresh`, `:theme`, `:help`, `:quit`.
 Creation and resource addition use popup forms with arrow-key selections and
 Space to toggle field options. Escape cancels a form before generation.
 Project creation asks for the database (SQLite by default), then the template source: GitHub release, local pack or
@@ -158,6 +161,66 @@ connection, then `DATABASE_URL` from its environment if the file does not define
 it. The database engine is fixed at project creation; changing an existing
 project from MySQL to SQLite requires migrating the code and data separately.
 
+## Database schema and relations
+
+Press **d** (or select the schema from **b**) to inspect the actual database:
+tables, column types, nullability, primary keys (`PK`), foreign keys (`FK`),
+outgoing links, incoming links and deletion rules. These are read from SQLite
+PRAGMA metadata or MySQL information_schema; handwritten tables are included,
+internal SQLite/SQLx tables are hidden, and no user records are queried.
+Use the arrows to select a table, Tab to focus its details, then arrows or
+PageUp/PageDown to scroll. **F5** refreshes the snapshot. **p** switches to the
+models declared in `miblo.yaml`, which remain visible without a database connection.
+The two sources are labeled explicitly: declaring a model does not mean its
+migration is already applied. `miblo db schema` returns the actual schema as JSON.
+
+Each generated table already has an automatic integer primary key named `id`.
+To create a relation while adding a **new** model:
+
+1. Create the referenced model first, for example `Group` with `name:string`.
+2. Press **a** to create `User` and add its regular fields.
+3. In the field menu, choose **Ajouter une relation (clé étrangère)**.
+4. Select `Group`; Miblo suggests `group_id` and uses the matching integer type.
+5. Choose whether the link is optional (`NULL`) or unique (one-to-one instead
+   of many-to-one), then choose the deletion rule. **RESTRICT** is the default:
+   deleting a referenced group is blocked. **CASCADE** deletes the linked rows;
+   **SET NULL** keeps them with an empty link and requires an optional field.
+6. Confirm generation. Miblo creates the field, an index, the SQL foreign key,
+   the Rust types and the CRUD payloads. SQLite applies the migration automatically
+   while the API is stopped; use **b** to apply it with MySQL.
+
+A field can also be a relation from the initial type selector. Self references
+are supported (for example optional `Folder.parent_id → Folder.id`). The same
+choices can be scripted:
+
+```sh
+miblo add Group name:string --yes
+miblo add User name:string 'group_id:int:ref=Group' --yes
+miblo add Note body:text 'user_id:int?:ref=User:on_delete=set_null' --yes
+```
+
+References target another Miblo model's generated `id`. They are enforced by the
+database, including create and PATCH requests; related records must already
+exist. The CRUD exposes the foreign-key ID, without automatic joins or nested
+objects. Changing keys on existing models, custom/composite primary keys, and
+automatic many-to-many tables are not part of this version. Existing composite
+keys and foreign keys can still be inspected in the actual schema.
+
+**Older projects:** press **u**, choose the published pack, a local directory or
+a custom archive URL, and confirm. This updates only the template pin for future
+models; no existing Rust files, tables or applied migrations are rewritten.
+The official relation packs are version **0.3.0** and require CLI **0.5+**. The
+CLI refuses to silently generate a relation with an older pack. Existing custom
+error handlers are preserved; if an older parent route reports a generic error
+on a protected deletion, the database still blocks it. Update its error mapping
+in your editor if you want a specific response.
+
+```sh
+miblo template update --project my-api
+# Local development:
+miblo template update --project my-api --template-dir ../miblo_templates/rust_sqlite_template_v1
+```
+
 ## Guided creation
 
 ```sh
@@ -174,8 +237,8 @@ Authentication is deliberately deferred.
 The default template URLs depend on the chosen database:
 
 ```text
-https://github.com/NaSuRall/miblo_templates/releases/download/v0.1.0/rust-axum-mysql.tar.gz
-https://github.com/NaSuRall/miblo_templates/releases/download/v0.2.0/rust-axum-sqlite.tar.gz
+https://github.com/NaSuRall/miblo_templates/releases/download/v0.3.0/rust-axum-mysql.tar.gz
+https://github.com/NaSuRall/miblo_templates/releases/download/v0.3.0/rust-axum-sqlite.tar.gz
 ```
 
 Each archive has a `.sha256` sidecar in its versioned GitHub release.
@@ -300,11 +363,11 @@ JSON responses. The scaffold has no authentication or authorization yet.
 
 ```sh
 miblo new shop-api --template-base-url https://templates.example.com --yes
-# Fetches /v0.1.0/rust-axum-mysql.tar.gz and its .sha256 sidecar.
+# Fetches /v0.3.0/rust-axum-mysql.tar.gz and its .sha256 sidecar.
 
 miblo new shop-api \
   --template-url https://templates.example.com/custom/api.tar.gz \
-  --template-version 0.1.0 --yes
+  --template-version 0.3.0 --yes
 ```
 
 `MIBLO_TEMPLATE_BASE_URL` can set the default base URL. `--sha256 HEX` provides a
@@ -382,7 +445,7 @@ A PTY smoke test exercises the real full-screen UI on Unix/macOS. It requires
 `pyte` in a separate Python environment. It creates an isolated SQLite database
 and uses a stub external editor. With `--api-target-dir` it compiles and runs a
 real API and exercises CRUD through the interface (including cancellation and
-HTTP 404). Without it, the process fixture intentionally does not answer HTTP
+HTTP 404), relation creation, actual/declared schema, and template updates. Without it, the process fixture intentionally does not answer HTTP
 and must be reported as unresponsive:
 
 ```sh
@@ -399,7 +462,7 @@ The CLI is organized around `config`, `templates`, `generation`, `wizard`,
 ## Next steps
 
 Authentication with protected routes and proper password handling, richer field
-types/relations, OpenAPI, existing-schema evolution, then one Node/TypeScript
+types, automatic many-to-many relations, OpenAPI, existing-schema evolution, then one Node/TypeScript
 backend. These are not implemented by this release.
 
 License: MIT.

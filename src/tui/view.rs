@@ -109,9 +109,14 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         Block::default().style(Style::default().bg(colors.background).fg(colors.foreground)),
         area,
     );
-    app.code_visible = app.show_code && area.height >= 30 && app.project.is_some();
+    app.code_visible =
+        app.show_code && !app.show_schema && area.height >= 30 && app.project.is_some();
     if !app.code_visible && app.focus == Focus::Code {
-        app.focus = Focus::Routes;
+        app.focus = if app.show_schema {
+            Focus::Tables
+        } else {
+            Focus::Routes
+        };
     }
     if area.width < 70 || area.height < 20 {
         frame.render_widget(
@@ -253,6 +258,8 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     );
     if app.project.is_none() {
         frame.render_widget(Paragraph::new("\n  Ton API, au même endroit.\n\n  n créer une API · o ouvrir un projet\n  a ajouter un modèle / une table\n  b configurer la base / les migrations\n\n  Espace : actions · ? : aide\n  Flèches / j/k : naviguer · Tab : panneau suivant").wrap(Wrap { trim: false }).block(panel(" Atelier API ", false, colors)), columns[1]);
+    } else if app.show_schema {
+        draw_schema(frame, app, columns[1], colors);
     } else {
         let work = Layout::vertical([
             Constraint::Min(6),
@@ -401,7 +408,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         Paragraph::new(vec![
             Line::from(app.notice.as_str()),
             Line::from(Span::styled(
-                "Tab panneaux · x tester · f requête · b BDD · e éditeur · v code · ? aide",
+                "Tab panneaux · d schéma · x tester · b BDD · e éditeur · v code · ? aide",
                 Style::default().fg(colors.muted),
             )),
         ])
@@ -416,6 +423,98 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     if let Some(dialog) = &app.dialog {
         draw_dialog(frame, dialog, colors);
     }
+}
+
+fn draw_schema(frame: &mut Frame, app: &App, area: Rect, colors: Palette) {
+    let rows = Layout::vertical([Constraint::Length(3), Constraint::Min(4)]).split(area);
+    let source = if app.schema.planned {
+        "Schéma déclaré · modèles du projet"
+    } else {
+        "Schéma réel · lecture de la base"
+    };
+    let info = if app.schema.planned {
+        "PK id automatique · b applique les migrations · p revient à la base réelle".into()
+    } else if app.schema.loading() {
+        "Lecture du schéma en cours…".into()
+    } else if let Some(error) = &app.schema.error {
+        format!("{error} · p : voir les modèles déclarés")
+    } else {
+        app.schema
+            .actual
+            .as_ref()
+            .map_or(String::new(), |s| s.database.clone())
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                source,
+                Style::default()
+                    .fg(colors.accent)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(clean(&info)),
+            Line::from(Span::styled(
+                "p réel / déclaré · F5 actualiser · d retour aux routes",
+                Style::default().fg(colors.muted),
+            )),
+        ]),
+        rows[0],
+    );
+    let parts = Layout::horizontal([
+        Constraint::Length(if area.width >= 75 { 24 } else { 16 }),
+        Constraint::Min(25),
+    ])
+    .split(rows[1]);
+    let items: Vec<_> = app
+        .schema
+        .tables()
+        .iter()
+        .map(|table| ListItem::new(clean(&table.name)))
+        .collect();
+    let mut state = ListState::default().with_selected(if items.is_empty() {
+        None
+    } else {
+        Some(app.schema.selected)
+    });
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(panel(
+                format!(" Tables ({}) ", app.schema.tables().len()),
+                app.focus == Focus::Tables,
+                colors,
+            ))
+            .highlight_style(Style::default().fg(colors.accent).bg(colors.selected))
+            .highlight_symbol("› "),
+        parts[0],
+        &mut state,
+    );
+    let lines: Vec<_> = app
+        .schema
+        .details()
+        .iter()
+        .skip(app.schema.scroll)
+        .take(parts[1].height.saturating_sub(2) as usize)
+        .map(|line| {
+            Line::from(Span::styled(
+                clean(line),
+                Style::default().fg(if line.contains('→') || line.starts_with("PK") {
+                    colors.accent
+                } else {
+                    colors.foreground
+                }),
+            ))
+        })
+        .collect();
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(panel(
+                " Colonnes · clés · relations ",
+                app.focus == Focus::Schema,
+                colors,
+            )),
+        parts[1],
+    );
 }
 
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
@@ -546,7 +645,7 @@ fn draw_dialog(frame: &mut Frame, dialog: &forms::Dialog, colors: Palette) {
             );
         }
         Dialog::Help => {
-            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  x tester la route • f requête HTTP libre • v masquer le code\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, run, stop, check, test\n  db, migrate, routes, request, code, edit, refresh, help, quit\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
+            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  x tester la route • f requête HTTP libre • v masquer le code\n  d schéma BDD • p réel/déclaré • u mettre à jour les templates\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, run, stop, check, test\n  db, migrate, schema, templates, routes, request, code, edit, refresh\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
                 .style(Style::default().fg(colors.foreground)).block(panel(" Aide Miblo ", true, colors)).wrap(Wrap { trim: false }), area);
         }
     }

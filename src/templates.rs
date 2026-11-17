@@ -51,11 +51,14 @@ struct Manifest {
     schema_version: u32,
     id: String,
     version: String,
+    #[serde(default)]
+    features: Vec<String>,
 }
 
 pub struct Pack {
     pub lock: TemplateLock,
     pub id: String,
+    pub features: Vec<String>,
     registry: Handlebars<'static>,
 }
 
@@ -254,6 +257,7 @@ impl Pack {
             lock,
             registry,
             id: manifest.id,
+            features: manifest.features,
         })
     }
 
