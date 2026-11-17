@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the real TUI through a PTY. Requires pyte; uses fake Cargo, no database."""
+"""Exercise the real TUI through a PTY. Requires pyte; uses real SQLite; optional real API process."""
 import argparse
 import errno
 import fcntl
@@ -12,6 +12,7 @@ import select
 import shlex
 import shutil
 import signal
+import socket
 import struct
 import sqlite3
 import subprocess
@@ -27,6 +28,7 @@ parser.add_argument('--miblo', type=Path, required=True)
 parser.add_argument('--templates', type=Path, required=True)
 parser.add_argument('--database', choices=['sqlite', 'mysql'], default='sqlite')
 parser.add_argument('--capture-json', type=Path)
+parser.add_argument('--api-target-dir', type=Path, help='Build and test real SQLite CRUD routes in the TUI')
 args = parser.parse_args()
 
 class Terminal:
@@ -115,11 +117,21 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
     fake_bin = root / 'bin'; fake_bin.mkdir()
     cargo = fake_bin / 'cargo'
     cargo.write_text('#!/bin/sh\nif [ "$1" = run ]; then\n  sleep 120 &\n  echo $! > "$MIBLO_QA_PID"\n  echo "Server running on http://127.0.0.1:3000"\n  wait\nelse\n  echo "Test fixture: cargo $1 succeeded"\nfi\n')
+    if args.api_target_dir:
+        assert args.database == 'sqlite', 'Real API mode uses the automatic SQLite setup'
+        real_cargo = shutil.which('cargo')
+        command = shlex.join([real_cargo, 'run', '--locked', '--offline', '--target-dir', str(args.api_target_dir.resolve())])
+        cargo.write_text('#!/bin/sh\nif [ "$1" = run ]; then\n  ' + command + ' &\n  echo $! > "$MIBLO_QA_PID"\n  wait $!\nelse\n  echo "Test fixture: cargo $1 succeeded"\nfi\n')
     cargo.chmod(0o755)
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        api_port = sock.getsockname()[1]
     editor = root / 'test editor.py'
     marker = root / 'editor-path.txt'
     editor.write_text('import pathlib, sys\npathlib.Path(sys.argv[1]).write_text(sys.argv[2])\n')
     env = dict(os.environ, TERM='xterm-256color', MIBLO_CACHE_DIR=str(root / 'cache'), PATH=str(fake_bin) + os.pathsep + os.environ['PATH'], MIBLO_QA_PID=str(root / 'api-child.pid'), VISUAL=shlex.join([sys.executable, str(editor), str(marker)]))
+    for key in ['DATABASE_URL', 'SERVER_PORT', 'SERVER_ADDRESS']:
+        env.pop(key, None)
     env.pop('NO_COLOR', None)
     env.pop('MIBLO_TEMPLATE_DIR', None)
     env.pop('MIBLO_TEMPLATE_BASE_URL', None)
@@ -129,7 +141,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
         ui.send('n'); ui.wait('Nom de la nouvelle API')
         ui.send('\x15atelier-demo\r'); ui.wait('Dossier à créer')
         ui.send('\r'); ui.wait('Port du serveur')
-        ui.send('\r'); ui.wait('Base de données')
+        ui.send('\x15' + str(api_port) + '\r'); ui.wait('Base de données')
         ui.send(('\x1b[B' if args.database == 'mysql' else '') + '\r'); ui.wait('Source du template')
         ui.wait('Dossier local — chemin proposé')
         ui.send('\x1b[B\r'); ui.wait('URL du template')
@@ -189,8 +201,8 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
         ui.send('?'); ui.wait('NAVIGATION'); ui.send('\x1b'); ui.wait_absent('NAVIGATION')
         ui.send('t'); ui.wait('Thème modifié')
         if args.capture_json: ui.capture(args.capture_json)
-        ui.resize(90, 26); ui.wait('Logs · API')
-        ui.resize(130, 40); ui.wait('État')
+        ui.resize(90, 26); ui.wait_absent('Aperçu ·'); ui.wait('État BDD'); ui.wait('Réponse HTTP')
+        ui.resize(130, 40); ui.wait('Aperçu ·')
         ui.send('e')
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline and not marker.exists(): ui.pump()
@@ -199,12 +211,50 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
         ui.send(':check\r'); ui.wait('Test fixture: cargo check succeeded'); ui.wait('Aucune action en cours')
         ui.send('n'); ui.wait('Nom de la nouvelle API'); ui.send('\x1b'); ui.wait_absent('Nom de la nouvelle API')
         assert not (checkout / 'my-api').exists()
-        ui.send('r'); ui.wait('En cours')
+        ui.send('r'); ui.wait('API en cours' if args.api_target_dir else 'API ne répond pas', timeout=120)
         first_pid = int((root / 'api-child.pid').read_text())
+        if args.api_target_dir:
+            ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('GET : HTTP 200')
+            ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('GET /products ·')
+            ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('Corps JSON')
+            ui.send('\x15{"title":"from-tui","quantity":3}\r'); ui.wait('Envoyer cette requête ?')
+            ui.send('\r'); ui.wait('Requête annulée')
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert connection.execute('SELECT COUNT(*) FROM products').fetchone()[0] == 0
+            ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('Corps JSON')
+            ui.send('\x15{"title":"from-tui","quantity":3}\r'); ui.wait('Envoyer cette requête ?')
+            ui.send('\x1b[A\r'); ui.wait('POST : HTTP 201')
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert connection.execute('SELECT title FROM products').fetchone()[0] == 'from-tui'
+            ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('GET /products/1 ·')
+            ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('Corps JSON')
+            ui.send('\x15{"title":"updated-tui"}\r'); ui.wait('Envoyer cette requête ?')
+            ui.send('\x1b[A\r'); ui.wait('PATCH : HTTP 200')
+            ui.wait('updated-tui')
+            if args.capture_json: ui.capture(args.capture_json)
+            ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('Envoyer cette requête ?')
+            ui.send('\x1b[A\r'); ui.wait('DELETE : HTTP 204')
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert connection.execute('SELECT COUNT(*) FROM products').fetchone()[0] == 0
+            ui.send('f'); ui.wait('Méthode HTTP'); ui.send('\r'); ui.wait('Chemin HTTP')
+            ui.send('\x15/products/999\r'); ui.wait('GET : HTTP 404')
+            ui.send('v'); ui.wait_absent('Aperçu ·'); ui.send('v'); ui.wait('Aperçu ·')
+
         ui.send('s'); ui.wait('API arrêtée')
         assert stopped(first_pid), f'API child {first_pid} survived stop'
-        ui.send('r'); ui.wait('En cours')
+        if args.database == 'sqlite':
+            (project / 'migrations/000002_extra.sql').write_text('CREATE TABLE extra (id INTEGER PRIMARY KEY);')
+            ui.wait('Mise à jour BDD requise')
+            # Reopening must detect pending migrations from the database, not cached UI state.
+            ui.send(':open ' + str(project) + '\r'); ui.wait('Mise à jour BDD requise')
+            ui.send('b'); ui.wait('Appliquer les migrations'); ui.send('\x1b[B\r'); ui.wait('Confirmer')
+            ui.send('\r'); ui.wait('Migrations à jour'); ui.wait('Aucune action en cours')
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert connection.execute("SELECT name FROM sqlite_master WHERE name='extra'").fetchone()
+
+        ui.send('r'); ui.wait('API en cours' if args.api_target_dir else 'API ne répond pas', timeout=120)
         second_pid = int((root / 'api-child.pid').read_text())
+        assert second_pid != first_pid
         ui.send('q')
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
@@ -216,7 +266,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
                 break
         else: raise AssertionError('TUI did not exit')
         assert stopped(second_pid), f'API child {second_pid} survived quit'
-        print('PASS: local template discovery, HTTP 404 recovery without losing the draft, TUI creation, arrow selections, field options, resource generation, preview, themes, resize, editor handoff, commands, cancellation, process stop and quit cleanup')
+        print('PASS: local template discovery, HTTP 404 recovery without losing the draft, TUI creation, arrow selections, field options, resource generation, preview, themes, resize, editor handoff, commands, cancellation, HTTP-based status, pending migrations, code toggle, optional real CRUD requests, process stop and quit cleanup')
     except BaseException:
         print(ui.text())
         raise

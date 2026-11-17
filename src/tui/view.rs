@@ -58,7 +58,48 @@ fn panel<'a>(title: impl Into<Line<'a>>, focused: bool, colors: Palette) -> Bloc
         } else {
             colors.border
         }))
+        .title_style(Style::default().fg(if focused { colors.accent } else { colors.muted }))
         .style(Style::default().fg(colors.foreground).bg(colors.panel))
+}
+
+fn tone_color(tone: status::Tone, light: bool) -> Color {
+    match (tone, light) {
+        (status::Tone::Good, false) => Color::Rgb(101, 219, 147),
+        (status::Tone::Good, true) => Color::Rgb(24, 120, 64),
+        (status::Tone::Warning, false) => Color::Rgb(255, 185, 86),
+        (status::Tone::Warning, true) => Color::Rgb(155, 85, 0),
+        (status::Tone::Error, false) => Color::Rgb(255, 119, 133),
+        (status::Tone::Error, true) => Color::Rgb(184, 35, 57),
+        (status::Tone::Neutral, _) => Color::Rgb(131, 145, 170),
+    }
+}
+
+fn badge(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    badge: status::Badge,
+    extra: &str,
+    colors: Palette,
+    light: bool,
+) {
+    let lines = vec![
+        Line::from(Span::styled(
+            format!(" ● {}", badge.title),
+            Style::default()
+                .fg(tone_color(badge.tone, light))
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(format!(" {}", clean(&badge.detail))),
+        Line::from(Span::styled(
+            format!(" {}", clean(extra)),
+            Style::default().fg(colors.muted),
+        )),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines).block(panel(title.to_owned(), false, colors)),
+        area,
+    );
 }
 
 pub(super) fn draw(frame: &mut Frame, app: &mut App) {
@@ -68,19 +109,23 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         Block::default().style(Style::default().bg(colors.background).fg(colors.foreground)),
         area,
     );
+    app.code_visible = app.show_code && area.height >= 30 && app.project.is_some();
+    if !app.code_visible && app.focus == Focus::Code {
+        app.focus = Focus::Routes;
+    }
     if area.width < 70 || area.height < 20 {
         frame.render_widget(
             Paragraph::new("MIBLO\nAgrandis le terminal à au moins 70 × 20.\nq pour quitter")
-                .style(Style::default().fg(colors.accent))
-                .wrap(Wrap { trim: false }),
+                .style(Style::default().fg(colors.accent)),
             area,
         );
         return;
     }
     let layout = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(8),
-        Constraint::Length(if area.height > 30 { 8 } else { 5 }),
+        Constraint::Length(2),
+        Constraint::Length(5),
+        Constraint::Min(6),
+        Constraint::Length(if area.height >= 30 { 6 } else { 4 }),
         Constraint::Length(3),
     ])
     .split(area);
@@ -96,7 +141,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
                 .bg(colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(format!("   {project}   ")),
+        Span::raw(format!("  {project}  ")),
         Span::styled(
             format!(
                 "Rust / Axum / {}",
@@ -107,38 +152,53 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             Style::default().fg(colors.muted),
         ),
     ]);
-    frame.render_widget(
-        Paragraph::new(title).block(
-            Block::default()
-                .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(colors.border)),
-        ),
-        layout[0],
+    frame.render_widget(Paragraph::new(title), layout[0]);
+    let statuses = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(layout[1]);
+    badge(
+        frame,
+        statuses[0],
+        " État API · r lancer / s arrêter ",
+        app.api_badge(),
+        &app.base_url,
+        colors,
+        app.theme == 2,
     );
-    let wide = area.width >= 110;
-    let columns = if wide {
-        Layout::horizontal([
-            Constraint::Length(27),
-            Constraint::Min(30),
-            Constraint::Length(28),
-        ])
-        .split(layout[1])
+    let db = if app.project.is_none() {
+        status::Badge::new(
+            status::Tone::Neutral,
+            "Aucune base sélectionnée",
+            "Crée ou ouvre une API",
+        )
     } else {
-        Layout::horizontal([Constraint::Length(24), Constraint::Min(30)]).split(layout[1])
+        status::database_badge(&app.monitor.database, app.db_job.is_some())
     };
-    let sidebar = Layout::vertical([Constraint::Length(7), Constraint::Min(3)]).split(columns[0]);
-    let resources: Vec<ListItem> = app
+    badge(
+        frame,
+        statuses[1],
+        " État BDD · b configurer / migrer ",
+        db,
+        &app.status,
+        colors,
+        app.theme == 2,
+    );
+    let columns = Layout::horizontal([
+        Constraint::Length(if area.width >= 110 { 27 } else { 23 }),
+        Constraint::Min(30),
+    ])
+    .split(layout[2]);
+    let sidebar = Layout::vertical([Constraint::Length(6), Constraint::Min(3)]).split(columns[0]);
+    let resources: Vec<_> = app
         .project
         .as_ref()
-        .map(|project| {
-            project
-                .resources
+        .map(|p| {
+            p.resources
                 .iter()
-                .map(|resource| {
+                .map(|r| {
                     ListItem::new(vec![
-                        Line::from(resource.name.clone()),
+                        Line::from(r.name.clone()),
                         Line::from(Span::styled(
-                            resource.path.clone(),
+                            r.path.clone(),
                             Style::default().fg(colors.muted),
                         )),
                     ])
@@ -174,158 +234,184 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             }))
         })
         .collect();
-    let mut file_state = ListState::default().with_selected(if app.entries.is_empty() {
+    let mut file_state = ListState::default().with_selected(if files.is_empty() {
         None
     } else {
         Some(app.selected)
     });
     frame.render_stateful_widget(
         List::new(files)
-            .block(panel(" Fichiers ", app.focus == Focus::Files, colors))
+            .block(panel(
+                " Fichiers · e éditeur ",
+                app.focus == Focus::Files,
+                colors,
+            ))
             .highlight_style(Style::default().bg(colors.selected))
             .highlight_symbol("›"),
         sidebar[1],
         &mut file_state,
     );
-    if app.file.is_some() {
-        let filename = app
-            .file
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_default();
-        let height = columns[1].height.saturating_sub(2) as usize;
-        let lines: Vec<_> = app
-            .code
+    if app.project.is_none() {
+        frame.render_widget(Paragraph::new("\n  Ton API, au même endroit.\n\n  n créer une API · o ouvrir un projet\n  a ajouter un modèle / une table\n  b configurer la base / les migrations\n\n  Espace : actions · ? : aide\n  Flèches / j/k : naviguer · Tab : panneau suivant").wrap(Wrap { trim: false }).block(panel(" Atelier API ", false, colors)), columns[1]);
+    } else {
+        let work = Layout::vertical([
+            Constraint::Min(6),
+            Constraint::Length(if app.code_visible { 6 } else { 0 }),
+        ])
+        .split(columns[1]);
+        let routes_area = if area.width >= 110 {
+            Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
+                .split(work[0])
+        } else {
+            Layout::vertical([Constraint::Length(5), Constraint::Min(3)]).split(work[0])
+        };
+        let routes: Vec<_> = app
+            .routes
             .iter()
-            .enumerate()
-            .skip(app.code_scroll)
-            .take(height)
-            .map(|(index, code)| {
-                let color =
-                    if code.trim_start().starts_with("//") || code.trim_start().starts_with('#') {
-                        colors.muted
-                    } else {
-                        colors.foreground
-                    };
-                let visible = code
-                    .chars()
-                    .skip(app.code_horizontal as usize)
-                    .collect::<String>();
-                Line::from(vec![
-                    Span::styled(
-                        format!("{:>4} │ ", index + 1),
-                        Style::default().fg(colors.muted),
-                    ),
-                    Span::styled(visible, Style::default().fg(color)),
-                ])
-            })
+            .map(|r| ListItem::new(format!("{:<6} {}", r.method, r.path)))
             .collect();
+        let mut route_state = ListState::default().with_selected(Some(app.route_selected));
+        frame.render_stateful_widget(
+            List::new(routes)
+                .block(panel(
+                    " Routes · x tester · f libre ",
+                    app.focus == Focus::Routes,
+                    colors,
+                ))
+                .highlight_style(Style::default().fg(colors.accent).bg(colors.selected))
+                .highlight_symbol("› "),
+            routes_area[0],
+            &mut route_state,
+        );
+        let response_title = if app.tester.pending {
+            Line::from(" Réponse · requête en cours… ")
+        } else if let Some(reply) = &app.tester.reply {
+            let (tone, label) = match reply.status {
+                Some(code) => (
+                    if (200..300).contains(&code) {
+                        status::Tone::Good
+                    } else if code < 400 {
+                        status::Tone::Warning
+                    } else {
+                        status::Tone::Error
+                    },
+                    format!("HTTP {code}"),
+                ),
+                None => (status::Tone::Error, "Erreur réseau".into()),
+            };
+            Line::from(Span::styled(
+                format!(" Réponse · ● {label} · {} ms ", reply.elapsed_ms),
+                Style::default().fg(tone_color(tone, app.theme == 2)),
+            ))
+        } else {
+            Line::from(" Réponse HTTP ")
+        };
+        let mut response = Vec::new();
+        if let Some(reply) = &app.tester.reply {
+            response.push(Line::from(Span::styled(
+                clean(&format!(
+                    "{} {} · {}",
+                    reply.method, reply.path, reply.content_type
+                )),
+                Style::default().fg(colors.muted),
+            )));
+            response.extend(
+                app.tester
+                    .lines
+                    .iter()
+                    .skip(app.tester.scroll)
+                    .take(routes_area[1].height.saturating_sub(3) as usize)
+                    .map(|line| Line::from(line.clone())),
+            );
+        } else {
+            response.push(Line::from(if app.tester.pending {
+                "Envoi en cours · délai maximum 10 s"
+            } else {
+                "Sélectionne une route puis x ou Entrée."
+            }));
+            response.push(Line::from("f : choisir méthode, chemin et JSON"));
+            response.push(Line::from("Les écritures demandent confirmation."));
+        }
         frame.render_widget(
-            Paragraph::new(lines).block(panel(
-                format!(" {filename} · lecture seule "),
-                app.focus == Focus::Code,
+            Paragraph::new(response).block(panel(
+                response_title,
+                app.focus == Focus::Response,
                 colors,
             )),
-            columns[1],
+            routes_area[1],
         );
-    } else {
-        let welcome = vec![
-            Line::from(""),
-            Line::from(Span::styled(
-                "  Ton API, au même endroit.",
-                Style::default()
-                    .fg(colors.accent)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-            Line::from("  n    Créer une API"),
-            Line::from("  o    Ouvrir un projet"),
-            Line::from("  a    Ajouter un modèle / une table"),
-            Line::from("  b    Configurer la base / les migrations"),
-            Line::from(""),
-            Line::from("  Espace    Palette d’actions"),
-            Line::from("  :         Barre de commandes"),
-            Line::from("  ?         Raccourcis et aide"),
-            Line::from(""),
-            Line::from(Span::styled(
-                "  Flèches ou j/k • Tab entre les panneaux",
-                Style::default().fg(colors.muted),
-            )),
-        ];
-        frame.render_widget(
-            Paragraph::new(welcome).block(panel(" Atelier API ", app.focus == Focus::Code, colors)),
-            columns[1],
-        );
+        if app.code_visible {
+            let filename = app
+                .file
+                .as_ref()
+                .map_or(String::new(), |p| p.display().to_string());
+            let lines: Vec<_> = app
+                .code
+                .iter()
+                .enumerate()
+                .skip(app.code_scroll)
+                .take(4)
+                .map(|(i, line)| {
+                    Line::from(vec![
+                        Span::styled(
+                            format!("{:>4} │ ", i + 1),
+                            Style::default().fg(colors.muted),
+                        ),
+                        Span::raw(
+                            line.chars()
+                                .skip(app.code_horizontal as usize)
+                                .collect::<String>(),
+                        ),
+                    ])
+                })
+                .collect();
+            frame.render_widget(
+                Paragraph::new(lines).block(panel(
+                    format!(" Aperçu · {filename} · e éditeur · v masquer "),
+                    app.focus == Focus::Code,
+                    colors,
+                )),
+                work[1],
+            );
+        }
     }
-    if wide {
-        let resource_count = app.project.as_ref().map_or(0, |p| p.resources.len());
-        let status = vec![
-            Line::from(Span::styled(" API", Style::default().fg(colors.accent))),
-            Line::from(format!(" {}", app.api_status)),
-            Line::from(""),
-            Line::from(Span::styled(" PROJET", Style::default().fg(colors.accent))),
-            Line::from(format!(" {}", app.status)),
-            Line::from(format!(" {resource_count} ressource(s)")),
-            Line::from(""),
-            Line::from(Span::styled(" ACTION", Style::default().fg(colors.accent))),
-            Line::from(
-                app.job
-                    .as_ref()
-                    .map_or(" Aucune action en cours".into(), |p| {
-                        format!(" {}…", p.label)
-                    }),
-            ),
-            Line::from(""),
-            Line::from(" r lancer  •  s arrêter"),
-            Line::from(" c vérifier • e éditeur"),
-            Line::from(" t thème • F5 actualiser"),
-            Line::from(""),
-            Line::from(Span::styled(
-                " BASE DE DONNÉES",
-                Style::default().fg(colors.accent),
-            )),
-            Line::from(format!(" {}", app.db_status)),
-            Line::from(Span::styled(
-                " b configurer / migrer",
-                Style::default().fg(colors.muted),
-            )),
-        ];
-        frame.render_widget(
-            Paragraph::new(status)
-                .wrap(Wrap { trim: false })
-                .block(panel(" État ", false, colors)),
-            columns[2],
-        );
-    }
-    let height = layout[2].height.saturating_sub(2) as usize;
+    let height = layout[3].height.saturating_sub(2) as usize;
     let end = app.logs.len().saturating_sub(app.log_scroll);
-    let start = end.saturating_sub(height);
-    let logs: Vec<Line> = app
+    let logs: Vec<_> = app
         .logs
         .iter()
-        .skip(start)
-        .take(end - start)
+        .skip(end.saturating_sub(height))
+        .take(height)
         .map(|line| Line::from(line.clone()))
         .collect();
-    let log_title = if wide {
-        " Logs ".into()
-    } else {
-        format!(" Logs · API : {} ", app.api_status)
-    };
+    let action = app
+        .job
+        .as_ref()
+        .map_or("Aucune action en cours", |p| p.label.as_str());
+    let count = app.project.as_ref().map_or(0, |p| p.resources.len());
     frame.render_widget(
-        Paragraph::new(logs).block(panel(log_title, app.focus == Focus::Logs, colors)),
-        layout[2],
+        Paragraph::new(logs).block(panel(
+            format!(" Logs · {count} ressource(s) · {action} "),
+            app.focus == Focus::Logs,
+            colors,
+        )),
+        layout[3],
     );
     frame.render_widget(
-        Paragraph::new(app.notice.as_str())
-            .wrap(Wrap { trim: true })
-            .style(Style::default().fg(colors.accent))
-            .block(
-                Block::default()
-                    .borders(Borders::TOP)
-                    .border_style(Style::default().fg(colors.border)),
-            ),
-        layout[3],
+        Paragraph::new(vec![
+            Line::from(app.notice.as_str()),
+            Line::from(Span::styled(
+                "Tab panneaux · x tester · f requête · b BDD · e éditeur · v code · ? aide",
+                Style::default().fg(colors.muted),
+            )),
+        ])
+        .style(Style::default().fg(colors.accent))
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(colors.border)),
+        ),
+        layout[4],
     );
     if let Some(dialog) = &app.dialog {
         draw_dialog(frame, dialog, colors);
@@ -350,7 +436,7 @@ fn draw_dialog(frame: &mut Frame, dialog: &forms::Dialog, colors: Palette) {
             description, items, ..
         } => (description.len() + items.len() + 5) as u16,
         Dialog::Options { items, .. } => items.len() as u16 + 5,
-        Dialog::Help => 22,
+        Dialog::Help => 24,
     };
     let area = centered(frame.area(), 78, height);
     frame.render_widget(Clear, area);
@@ -460,7 +546,7 @@ fn draw_dialog(frame: &mut Frame, dialog: &forms::Dialog, colors: Palette) {
             );
         }
         Dialog::Help => {
-            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter un modèle • b base de données\n  r lancer •  s arrêter •  c vérifier • e éditeur\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, run, stop, check, test\n  db, migrate, doctor, edit, refresh, theme, help, quit\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
+            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  x tester la route • f requête HTTP libre • v masquer le code\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, run, stop, check, test\n  db, migrate, routes, request, code, edit, refresh, help, quit\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
                 .style(Style::default().fg(colors.foreground)).block(panel(" Aide Miblo ", true, colors)).wrap(Wrap { trim: false }), area);
         }
     }

@@ -4,7 +4,7 @@ Create and extend a Rust REST API using Axum, SQLx and SQLite or MySQL. The CLI 
 project settings and resources, downloads a versioned Handlebars template pack,
 and writes a normal Rust project that runs independently of Miblo.
 
-This development version is **0.3.0**. It uses template format **1** with
+This development version is **0.4.0**. It uses template format **1** with
 `rust-axum-mysql` **0.1.0** or `rust-axum-sqlite` **0.2.0**. Neither publishing a crate nor publishing a GitHub
 Release is performed by the build or packaging scripts.
 
@@ -23,7 +23,7 @@ There is no dependency on an installed `sqlx-cli`.
 Once this version is published, installation will be:
 
 ```sh
-cargo install miblo_cli_v2 --version 0.3.0 --locked
+cargo install miblo_cli_v2 --version 0.4.0 --locked
 ```
 
 ## Full-screen API workspace
@@ -36,27 +36,30 @@ miblo
 miblo ui --project path/to/my-api
 ```
 
-The workspace includes a resource list, file tree, read-only code preview,
-project/API status and bounded process logs. It supports three themes for the
+The workspace includes a resource list, file tree, route tester, API/database
+status cards, a small read-only code preview and bounded process logs. It supports three themes for the
 current session and adapts its panels to the terminal size (minimum 70 × 20).
 
 | Key | Action |
 | --- | --- |
 | Arrows or `j` / `k` | Navigate or scroll |
 | `Tab` / `Shift+Tab` | Switch panels |
-| `Enter` | Open a file, folder or resource |
+| `Enter` | Open a file, folder or resource; test the selected route |
 | `Space` | Open the action palette |
 | `:` | Enter a command |
 | `n` / `o` / `a` | New API / open project / add model + SQL table + CRUD |
 | `b` | Database connection, initialization and migrations |
 | `r` / `s` | Start / stop the API |
 | `c` | Run `cargo check` |
+| `x` | Test the selected route (path / identifier / query / JSON) |
+| `f` | Custom HTTP request: GET, POST, PATCH, PUT, DELETE or HEAD |
 | `e` | Open the selected file in an external editor |
+| `v` | Show / hide the six-line code preview |
 | `t` / `F5` | Change theme / refresh project |
 | `?` / `q` | Help / quit |
 
 Commands include `:new`, `:open path/to/project`, `:add`, `:run`, `:stop`,
-`:db`, `:migrate`, `:check`, `:test`, `:doctor`, `:edit`, `:refresh`, `:theme`, `:help`, `:quit`.
+`:db`, `:migrate`, `:routes`, `:route`, `:request`, `:code`, `:check`, `:test`, `:doctor`, `:edit`, `:refresh`, `:theme`, `:help`, `:quit`.
 Creation and resource addition use popup forms with arrow-key selections and
 Space to toggle field options. Escape cancels a form before generation.
 Project creation asks for the database (SQLite by default), then the template source: GitHub release, local pack or
@@ -81,11 +84,42 @@ terminal while the editor is open and refreshes the code when it returns.
 Private `.env` files are omitted from the explorer; `.env.example` is visible.
 
 The API and Cargo checks run in background processes, with output in the Logs
-panel. Miblo distinguishes startup from the generated server's ready message.
-The database panel reports connection checks and migration results separately. Stop and normal quit
+panel. Status cards stay visible even in compact terminals:
+
+- **Green:** the API answers `GET /health` successfully; the database is reachable
+  and its migration history matches the project's SQL files.
+- **Orange:** startup, a required API restart, database initialization, or pending
+  SQL migrations. Press `b` to review and apply migrations.
+- **Red:** the API process exited unexpectedly, health responds with an HTTP error,
+  a started API no longer responds, the database is unreachable, or an applied
+  migration has changed or disappeared.
+- **Gray:** stopped API, unopened project or a check still pending.
+
+Checks run in the background approximately every three seconds, with bounded
+HTTP/database timeouts. Database status reads SQLx history without creating a
+missing database or applying migrations. Reopening a project checks its real
+state again. An API started elsewhere is marked as external; Miblo does not stop
+that process. The API address follows `SERVER_ADDRESS` / `SERVER_PORT` (inherited
+environment, then `.env`, then project defaults); wildcard addresses are tested
+via loopback. Refresh with `F5` after changing these settings.
+
+Select a generated route with the arrows and press `x` or Enter. Review its path
+and replace its identifier, then edit the sample JSON when needed. `f` also lets
+you test custom routes. POST, PATCH, PUT and DELETE require an explicit **Envoyer**
+confirmation (Cancel is selected initially), because they act on the configured
+API's real data. Results show the HTTP code, elapsed time and formatted JSON or
+text body, including HTTP errors. Responses are limited to 64 KiB, requests time
+out after ten seconds, and redirects are not followed. Focus the response panel
+with Tab to scroll. Health status only checks `/health`; other routes are tested
+on demand, and no CRUD operation runs automatically. Custom authentication headers
+are not yet supported.
+
+The code preview occupies six terminal rows and can be hidden with `v`; it is
+hidden automatically below 30 rows. `e` opens the selected file regardless of
+preview visibility. Stop and normal quit
 terminate processes started by this workspace, including Cargo's API child.
-Finish generation/check jobs before quitting; the UI blocks quit while those
-jobs are active to avoid interrupting file writes. SQLite setup is automatic;
+Finish generation/check jobs and pending HTTP requests before quitting; the UI
+blocks quit while those jobs are active to avoid interrupting file writes. SQLite setup is automatic;
 configure MySQL from the `b` menu before starting its API.
 
 Without an interactive terminal, bare `miblo` displays help instead of waiting
@@ -312,7 +346,8 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 ```
 
-The CLI tests include an isolated HTTP fixture for download/cache behavior.
+The CLI tests cover download/cache behavior, HTTP responses and confirmation,
+compact dashboard layout, and actual SQLite migration status (pending and changed SQL).
 To test the actual template output with MySQL installed (`mysql` and `mysqld`):
 
 ```sh
@@ -344,13 +379,17 @@ migrations, CRUD, concurrent PATCH and persistence across restarts. `--remote`
 replaces the local template option to verify the published SQLite pack.
 
 A PTY smoke test exercises the real full-screen UI on Unix/macOS. It requires
-`pyte` in a separate Python environment and uses fake Cargo/editor processes
-instead of a database:
+`pyte` in a separate Python environment. It creates an isolated SQLite database
+and uses a stub external editor. With `--api-target-dir` it compiles and runs a
+real API and exercises CRUD through the interface (including cancellation and
+HTTP 404). Without it, the process fixture intentionally does not answer HTTP
+and must be reported as unresponsive:
 
 ```sh
 python3 scripts/smoke_tui.py \
   --miblo target/debug/miblo \
-  --database sqlite --templates ../miblo_templates/rust_sqlite_template_v1
+  --database sqlite --templates ../miblo_templates/rust_sqlite_template_v1 \
+  --api-target-dir /tmp/miblo-tui-api-target
 ```
 
 The CLI is organized around `config`, `templates`, `generation`, `wizard`,

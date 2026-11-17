@@ -18,6 +18,8 @@ pub(super) enum InputKind {
     DbName,
     DbUser,
     DbPassword,
+    HttpPath,
+    HttpBody,
 }
 #[derive(Clone, Copy)]
 pub(super) enum ChoiceKind {
@@ -32,6 +34,8 @@ pub(super) enum ChoiceKind {
     DbMenu,
     DbConfirm(Action),
     DbSave,
+    HttpMethod,
+    HttpConfirm,
 }
 #[derive(Clone)]
 pub(super) enum Dialog {
@@ -74,6 +78,68 @@ pub(super) struct AddDraft {
 }
 
 impl App {
+    pub(super) fn start_route_test(&mut self) -> Result<()> {
+        ensure!(!self.tester.pending, "Une requête HTTP est déjà en cours");
+        self.request_draft = self
+            .routes
+            .get(self.route_selected)
+            .context("Ouvre un projet pour tester ses routes")?
+            .clone();
+        // Every request exposes its path, including query parameters, before sending.
+        self.input(
+            InputKind::HttpPath,
+            "Chemin HTTP — remplace {id} par un identifiant",
+            &self.request_draft.path.replace("{id}", "1"),
+        );
+        Ok(())
+    }
+    pub(super) fn custom_request(&mut self) -> Result<()> {
+        ensure!(self.project.is_some(), "Ouvre un projet d’abord");
+        ensure!(!self.tester.pending, "Une requête HTTP est déjà en cours");
+        self.request_draft = http::Request::default();
+        self.choose(
+            ChoiceKind::HttpMethod,
+            "Méthode HTTP",
+            &["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD"],
+            vec![format!("API : {}", self.base_url)],
+            0,
+        );
+        Ok(())
+    }
+    fn confirm_request(&mut self) -> Result<()> {
+        http::validate(&self.base_url, &self.request_draft)?;
+        if self.request_draft.writes() {
+            self.choose(
+                ChoiceKind::HttpConfirm,
+                "Envoyer cette requête ?",
+                &["Envoyer", "Annuler"],
+                vec![
+                    format!("{} {}", self.request_draft.method, self.request_draft.path),
+                    format!("API : {}", self.base_url),
+                    "Cette requête peut modifier les données de cette API.".into(),
+                ],
+                1,
+            );
+            Ok(())
+        } else {
+            self.launch_request()
+        }
+    }
+    fn launch_request(&mut self) -> Result<()> {
+        ensure!(
+            self.job.is_none(),
+            "Attends la fin de l’action avant de tester la route"
+        );
+        self.tester
+            .start(&self.base_url, self.request_draft.clone())?;
+        self.dialog = None;
+        self.focus = Focus::Response;
+        self.notice = format!(
+            "{} {} · requête en cours…",
+            self.request_draft.method, self.request_draft.path
+        );
+        Ok(())
+    }
     pub(super) fn input(&mut self, kind: InputKind, title: &str, value: &str) {
         self.dialog = Some(Dialog::Input {
             kind,
@@ -116,6 +182,9 @@ impl App {
                 "Aide",
                 "Quitter",
                 "Base de données : connexion / migrations",
+                "Tester la route sélectionnée",
+                "Requête HTTP personnalisée",
+                "Afficher / masquer l’aperçu du code",
             ],
             Vec::new(),
             0,
@@ -123,7 +192,7 @@ impl App {
     }
     pub(super) fn start_new(&mut self) -> Result<()> {
         ensure!(
-            self.job.is_none() && self.api.is_none(),
+            self.job.is_none() && self.api.is_none() && !self.tester.pending,
             "Arrête l’API et attends la fin de l’action avant de créer un autre projet"
         );
         self.new_draft = NewDraft::default();
@@ -158,13 +227,20 @@ impl App {
 
     pub(super) fn creation_failed(&mut self) {
         self.notice = "Création échouée • Tu peux changer de source sans tout ressaisir".into();
+        let error = self
+            .logs
+            .iter()
+            .rev()
+            .find_map(|line| line.strip_prefix("[Création] Error: "))
+            .unwrap_or("Consulte les logs pour le détail de l’erreur.")
+            .to_owned();
         self.choose(
             ChoiceKind::NewRetry,
             "La création a échoué",
             &["Changer de source du template", "Réessayer", "Annuler"],
             vec![
                 "Le nom, le dossier et le port ont été conservés.".into(),
-                "Consulte les logs pour le détail de l’erreur.".into(),
+                error,
                 "Si la release est introuvable, choisis un dossier local.".into(),
             ],
             0,
@@ -220,7 +296,12 @@ impl App {
                         .modifiers
                         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                 {
-                    if value.len() < 4096 {
+                    let limit = if matches!(kind, InputKind::HttpBody) {
+                        64 * 1024
+                    } else {
+                        4096
+                    };
+                    if value.len() + c.len_utf8() <= limit {
                         value.push(c);
                     }
                     self.dialog = Some(dialog);
@@ -447,6 +528,23 @@ impl App {
                     0,
                 );
             }
+            InputKind::HttpPath => {
+                http::request_url(&self.base_url, value)?;
+                self.request_draft.path = value.into();
+                if matches!(self.request_draft.method.as_str(), "POST" | "PATCH" | "PUT") {
+                    self.input(
+                        InputKind::HttpBody,
+                        "Corps JSON de la requête",
+                        &self.request_draft.body.clone(),
+                    );
+                } else {
+                    self.confirm_request()?;
+                }
+            }
+            InputKind::HttpBody => {
+                self.request_draft.body = value.into();
+                self.confirm_request()?;
+            }
             InputKind::DbHost => {
                 ensure!(!value.is_empty(), "Indique le serveur MySQL");
                 self.db_draft.host = value.into();
@@ -519,9 +617,30 @@ impl App {
             ChoiceKind::Palette => self.command(
                 [
                     "new", "open", "add", "run", "stop", "check", "test", "doctor", "edit",
-                    "refresh", "theme", "help", "quit", "db",
+                    "refresh", "theme", "help", "quit", "db", "route", "request", "code",
                 ][selected],
             )?,
+            ChoiceKind::HttpMethod => {
+                self.request_draft.method =
+                    ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD"][selected].into();
+                self.request_draft.body = if matches!(selected, 1..=3) {
+                    "{}".into()
+                } else {
+                    String::new()
+                };
+                self.input(
+                    InputKind::HttpPath,
+                    "Chemin HTTP (ex. /users/1?limit=10)",
+                    &self.request_draft.path.clone(),
+                );
+            }
+            ChoiceKind::HttpConfirm => {
+                if selected == 0 {
+                    self.launch_request()?;
+                } else {
+                    self.notice = "Requête annulée · aucune requête envoyée".into();
+                }
+            }
             ChoiceKind::Database => {
                 self.new_draft.database = if selected == 0 {
                     Database::Sqlite
@@ -853,6 +972,35 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writes_wait_for_confirmation_and_cancel_sends_nothing() {
+        let mut app = App::new();
+        app.base_url = "http://127.0.0.1:1".into();
+        for method in ["POST", "PATCH", "PUT", "DELETE"] {
+            app.request_draft = http::Request {
+                method: method.into(),
+                path: "/users/1".into(),
+                body: "{}".into(),
+            };
+            app.confirm_request().unwrap();
+            assert!(matches!(
+                app.dialog,
+                Some(Dialog::Select {
+                    kind: ChoiceKind::HttpConfirm,
+                    selected: 1,
+                    ..
+                })
+            ));
+            assert!(!app.tester.pending);
+            app.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+                .unwrap();
+            assert!(app.dialog.is_none() && !app.tester.pending && app.tester.reply.is_none());
+        }
+        app.request_draft.body = "broken JSON".into();
+        assert!(app.confirm_request().is_err());
+        assert!(!app.tester.pending);
+    }
 
     #[test]
     fn resource_form_validates_and_builds_fields_without_writing() {

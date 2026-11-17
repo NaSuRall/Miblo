@@ -1,3 +1,5 @@
+pub mod health;
+
 use crate::config::{Database, Project};
 use anyhow::{Context, Result, bail, ensure};
 use sqlx::{
@@ -129,6 +131,18 @@ pub fn connection_url(root: &Path) -> Result<String> {
         return Ok("sqlite://miblo.sqlite?mode=rwc".into());
     }
     bail!("MySQL n’est pas configuré : ouvre Base de données avec b pour saisir la connexion")
+}
+
+pub fn env_value(root: &Path, name: &str) -> Result<Option<String>> {
+    if let Some(text) = env_text(root)? {
+        for item in dotenvy::from_read_iter(text.as_bytes()) {
+            let (key, value) = item.map_err(|_| anyhow::anyhow!("Fichier .env invalide"))?;
+            if key == name {
+                return Ok(Some(value));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn validate_url(database: Database, url: String) -> Result<String> {

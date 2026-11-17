@@ -1,5 +1,7 @@
 mod forms;
+mod http;
 mod process;
+mod status;
 mod view;
 
 use crate::{
@@ -27,6 +29,8 @@ enum Focus {
     Code,
     Logs,
     Resources,
+    Routes,
+    Response,
 }
 #[derive(Clone)]
 struct Entry {
@@ -56,7 +60,6 @@ struct App {
     new_draft: forms::NewDraft,
     add_draft: forms::AddDraft,
     api: Option<Process>,
-    api_status: String,
     job: Option<Process>,
     job_destination: Option<PathBuf>,
     sender: SyncSender<String>,
@@ -67,6 +70,17 @@ struct App {
     db_status: String,
     db_job: Option<Action>,
     migrate_after_add: bool,
+    routes: Vec<http::Request>,
+    route_selected: usize,
+    request_draft: http::Request,
+    tester: http::Tester,
+    monitor: status::Monitor,
+    base_url: String,
+    api_ready: bool,
+    api_failure: Option<String>,
+    restart_required: bool,
+    show_code: bool,
+    code_visible: bool,
 }
 
 pub fn run(project: Option<PathBuf>) -> Result<()> {
@@ -133,7 +147,6 @@ impl App {
             new_draft: forms::NewDraft::default(),
             add_draft: forms::AddDraft::default(),
             api: None,
-            api_status: "Arrêtée".into(),
             job: None,
             job_destination: None,
             sender,
@@ -144,18 +157,34 @@ impl App {
             db_status: "Non vérifiée".into(),
             db_job: None,
             migrate_after_add: false,
+            routes: vec![],
+            route_selected: 0,
+            request_draft: http::Request::default(),
+            tester: http::Tester::default(),
+            monitor: status::Monitor::default(),
+            base_url: String::new(),
+            api_ready: false,
+            api_failure: None,
+            restart_required: false,
+            show_code: true,
+            code_visible: true,
         }
     }
 
     fn open_project(&mut self, path: &Path) -> Result<()> {
         ensure!(
-            self.api.is_none() && self.job.is_none(),
+            self.api.is_none() && self.job.is_none() && !self.tester.pending,
             "Arrête l’API et attends la fin de l’action avant de changer de projet"
         );
         let root = path.canonicalize().context("Dossier introuvable")?;
         let project = Project::load(&root.join("miblo.yaml"))?;
         self.root = Some(root);
         self.project = Some(project);
+        self.tester = http::Tester::default();
+        self.route_selected = 0;
+        self.api_failure = None;
+        self.api_ready = false;
+        self.restart_required = false;
         self.db_status = "Non vérifiée".into();
         self.selected = 0;
         self.resource_selected = 0;
@@ -184,6 +213,10 @@ impl App {
             return Ok(());
         };
         self.project = Some(Project::load(&root.join("miblo.yaml"))?);
+        self.routes = http::routes(self.project.as_ref().unwrap());
+        self.route_selected = self.route_selected.min(self.routes.len().saturating_sub(1));
+        self.base_url = crate::runtime::http_base(&root).unwrap_or_default();
+        self.monitor.invalidate();
         self.status = match generation::inspect(&root) {
             Ok(_) => "Configuration cohérente".into(),
             Err(e) => format!("À vérifier : {e}"),
@@ -289,20 +322,10 @@ impl App {
             KeyCode::Char(' ') => self.palette(),
             KeyCode::Char('?') | KeyCode::F(1) => self.dialog = Some(forms::Dialog::Help),
             KeyCode::Tab => {
-                self.focus = match self.focus {
-                    Focus::Files => Focus::Code,
-                    Focus::Code => Focus::Logs,
-                    Focus::Logs => Focus::Resources,
-                    Focus::Resources => Focus::Files,
-                }
+                self.cycle_focus(false);
             }
             KeyCode::BackTab => {
-                self.focus = match self.focus {
-                    Focus::Files => Focus::Resources,
-                    Focus::Resources => Focus::Logs,
-                    Focus::Logs => Focus::Code,
-                    Focus::Code => Focus::Files,
-                }
+                self.cycle_focus(true);
             }
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
@@ -318,6 +341,15 @@ impl App {
                 if matches!(self.focus, Focus::Files | Focus::Resources) =>
             {
                 self.open_selected()?
+            }
+            KeyCode::Enter if self.focus == Focus::Routes => self.start_route_test()?,
+            KeyCode::Char('x') => self.start_route_test()?,
+            KeyCode::Char('f') => self.custom_request()?,
+            KeyCode::Char('v') => {
+                self.show_code = !self.show_code;
+                if !self.show_code && self.focus == Focus::Code {
+                    self.focus = Focus::Routes;
+                }
             }
             KeyCode::Char('n') => self.start_new()?,
             KeyCode::Char('a') => self.start_add()?,
@@ -346,6 +378,8 @@ impl App {
                 self.project.as_ref().map_or(0, |p| p.resources.len()),
             ),
             Focus::Code => (&mut self.code_scroll, self.code.len()),
+            Focus::Routes => (&mut self.route_selected, self.routes.len()),
+            Focus::Response => (&mut self.tester.scroll, self.tester.lines.len()),
             Focus::Logs => {
                 self.log_scroll = self
                     .log_scroll
@@ -370,13 +404,26 @@ impl App {
         self.logs.push_back(clean(&message));
     }
     fn tick(&mut self) {
+        if self.tester.tick()
+            && let Some(reply) = &self.tester.reply
+        {
+            self.notice = format!(
+                "{} : {} · {} ms",
+                reply.method,
+                reply
+                    .status
+                    .map_or("échec réseau".into(), |s| format!("HTTP {s}")),
+                reply.elapsed_ms
+            );
+            self.log(self.notice.clone());
+        }
         while let Ok(message) = self.receiver.try_recv() {
             if message.starts_with("[API]")
                 && message.contains("Server running on")
                 && self.api.is_some()
             {
-                self.api_status = "En cours".into();
-                self.db_status = "Migrations à jour".into();
+                self.api_ready = true;
+                self.monitor.invalidate();
             }
             self.log(message);
         }
@@ -386,7 +433,9 @@ impl App {
             .and_then(|process| process.poll().ok().flatten());
         if let Some(status) = finished {
             self.api = None;
-            self.api_status = format!("Terminée ({status})");
+            self.api_ready = false;
+            self.api_failure = Some(status.to_string());
+            self.monitor.invalidate();
             self.log(format!("API : {status}"));
         }
         let finished = self
@@ -402,6 +451,7 @@ impl App {
             if status.success() {
                 if migrate_after_add {
                     self.db_status = "Migrations en attente".into();
+                    self.restart_required = self.api.is_some();
                 }
                 if let Some(action) = db_action {
                     self.db_status = if action == Action::Check {
@@ -442,11 +492,15 @@ impl App {
             } else if db_action.is_some() {
                 self.db_status = "Échec • consulter les logs".into();
             }
+            self.monitor.invalidate();
         }
+        self.monitor
+            .tick(self.root.as_deref(), &self.base_url, self.job.is_some());
     }
 
     fn ready_for_job(&self) -> Result<&Path> {
         ensure!(self.job.is_none(), "Une action est déjà en cours");
+        ensure!(!self.tester.pending, "Attends la fin de la requête HTTP");
         self.root
             .as_deref()
             .context("Aucun projet ouvert : n pour créer une API, o pour ouvrir un projet")
@@ -468,13 +522,19 @@ impl App {
             .env("DATABASE_URL", url)
             .current_dir(root);
         self.api = Some(Process::spawn(command, "API", self.sender.clone())?);
-        self.api_status = "Compilation / démarrage".into();
+        self.api_ready = false;
+        self.api_failure = None;
+        self.restart_required = false;
+        self.monitor.invalidate();
         self.log("Lancement de l’API…".into());
         Ok(())
     }
     fn stop_api(&mut self) {
         self.api = None;
-        self.api_status = "Arrêtée".into();
+        self.api_ready = false;
+        self.api_failure = None;
+        self.restart_required = false;
+        self.monitor.invalidate();
         self.log("API arrêtée".into());
     }
     fn cargo_job(&mut self, action: &str) -> Result<()> {
@@ -502,6 +562,7 @@ impl App {
             command.env_remove("MIBLO_TEMPLATE_DIR");
         }
         self.job = Some(Process::spawn(command, label, self.sender.clone())?);
+        self.monitor.invalidate();
         self.job_destination = destination;
         self.dialog = None;
         self.notice = format!("{label} en cours…");
@@ -548,6 +609,10 @@ impl App {
 
     fn request_quit(&mut self) -> Result<()> {
         ensure!(
+            !self.tester.pending,
+            "Attends la fin de la requête HTTP avant de quitter"
+        );
+        ensure!(
             self.job.is_none(),
             "Une action est en cours ; attends sa fin pour quitter sans interrompre l’écriture des fichiers"
         );
@@ -561,6 +626,10 @@ impl App {
             "q" | "quit" => self.request_quit()?,
             "new" => self.start_new()?,
             "add" => self.start_add()?,
+            "routes" => self.focus = Focus::Routes,
+            "route" => self.start_route_test()?,
+            "request" | "http" => self.custom_request()?,
+            "code" => self.show_code = !self.show_code,
             "db" | "database" => self.database_menu()?,
             "migrate" => self.confirm_database_action(Action::Migrate)?,
             "open" if argument.is_empty() => {
@@ -587,6 +656,98 @@ impl App {
             _ => anyhow::bail!("Commande inconnue. :help affiche les commandes disponibles."),
         }
         Ok(())
+    }
+
+    fn cycle_focus(&mut self, backwards: bool) {
+        let mut order = vec![
+            Focus::Resources,
+            Focus::Files,
+            Focus::Routes,
+            Focus::Response,
+        ];
+        if self.code_visible {
+            order.push(Focus::Code);
+        }
+        order.push(Focus::Logs);
+        let index = order
+            .iter()
+            .position(|focus| *focus == self.focus)
+            .unwrap_or(0);
+        self.focus = order[(index + if backwards { order.len() - 1 } else { 1 }) % order.len()];
+    }
+
+    fn api_badge(&self) -> status::Badge {
+        use status::{Badge, HttpHealth, Tone};
+        if self.root.is_none() {
+            return Badge::new(Tone::Neutral, "Aucun projet", "n créer · o ouvrir");
+        }
+        if let Some(error) = &self.api_failure {
+            return Badge::new(
+                Tone::Error,
+                "API interrompue",
+                format!("{error} · consulter les logs"),
+            );
+        }
+        if self.base_url.is_empty() {
+            return Badge::new(
+                Tone::Error,
+                "Adresse HTTP invalide",
+                "Vérifie SERVER_ADDRESS / SERVER_PORT puis F5",
+            );
+        }
+        if self.api.is_some()
+            && !self.api_ready
+            && !matches!(self.monitor.api, HttpHealth::Responding(..))
+        {
+            return Badge::new(
+                Tone::Warning,
+                "Démarrage en cours",
+                "Compilation / connexion à la base…",
+            );
+        }
+        match &self.monitor.api {
+            HttpHealth::Responding(code, elapsed) => {
+                if self.restart_required {
+                    Badge::new(
+                        Tone::Warning,
+                        "API à redémarrer",
+                        "API répond · s puis r pour charger les nouvelles routes",
+                    )
+                } else {
+                    Badge::new(
+                        Tone::Good,
+                        if self.api.is_some() {
+                            "API en cours"
+                        } else {
+                            "API accessible (externe)"
+                        },
+                        format!("GET /health → HTTP {code} · {elapsed} ms"),
+                    )
+                }
+            }
+            HttpHealth::Failed(code) if self.api.is_some() || code.is_some() => Badge::new(
+                Tone::Error,
+                "API ne répond pas",
+                code.map_or("Aucune réponse HTTP · consulter les logs".into(), |s| {
+                    format!("GET /health → HTTP {s}")
+                }),
+            ),
+            HttpHealth::Unknown if self.api.is_some() => Badge::new(
+                Tone::Warning,
+                "Vérification HTTP…",
+                "Le processus a démarré, réponse HTTP attendue",
+            ),
+            HttpHealth::Unknown => Badge::new(
+                Tone::Neutral,
+                "Vérification HTTP…",
+                "Contrôle de /health en cours",
+            ),
+            _ => Badge::new(
+                Tone::Neutral,
+                "API arrêtée",
+                "r lancer l’API · x tester une route",
+            ),
+        }
     }
 }
 
@@ -723,6 +884,43 @@ mod tests {
         let rendered = screen(&mut app, 130, 40);
         assert!(!rendered.contains("not-visible-secret"));
         assert!(rendered.contains("••••"));
+    }
+
+    #[test]
+    fn dashboard_keeps_status_visible_and_code_small() {
+        let mut app = App::new();
+        app.root = Some(PathBuf::from("/tmp/example"));
+        app.base_url = "http://127.0.0.1:3000".into();
+        app.project = Some(Project::new("example".into(), 3000, vec![]));
+        app.routes = http::routes(app.project.as_ref().unwrap());
+        app.file = Some("src/main.rs".into());
+        app.code = (0..100).map(|i| format!("code-line-{i:03}")).collect();
+        app.monitor.api = status::HttpHealth::Responding(200, 4);
+        app.monitor.database = database::health::Health::Pending(2);
+        assert_eq!(app.api_badge().tone, status::Tone::Good);
+        let rendered = screen(&mut app, 130, 40);
+        for label in [
+            "API accessible (externe)",
+            "Mise à jour BDD requise",
+            "Routes",
+            "Réponse HTTP",
+            "code-line-003",
+        ] {
+            assert!(rendered.contains(label), "missing {label}");
+        }
+        assert!(!rendered.contains("code-line-004"));
+        app.command("code").unwrap();
+        assert!(!screen(&mut app, 130, 40).contains("code-line-000"));
+        let compact = screen(&mut app, 80, 24);
+        for label in ["État API", "État BDD", "Routes", "Réponse HTTP"] {
+            assert!(compact.contains(label));
+        }
+        app.monitor.api = status::HttpHealth::Failed(Some(503));
+        assert_eq!(app.api_badge().tone, status::Tone::Error);
+        app.monitor.api = status::HttpHealth::Failed(None);
+        assert_eq!(app.api_badge().tone, status::Tone::Neutral);
+        app.api_failure = Some("exit status: 1".into());
+        assert_eq!(app.api_badge().tone, status::Tone::Error);
     }
 
     #[test]

@@ -356,6 +356,9 @@ impl Server {
             while !flag.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // Accepted sockets inherit O_NONBLOCK on macOS. A partial
+                        // request must not be mistaken for an archive download.
+                        stream.set_nonblocking(false).unwrap();
                         stream
                             .set_read_timeout(Some(Duration::from_secs(2)))
                             .unwrap();
@@ -364,8 +367,14 @@ impl Server {
                         while !request.ends_with(b"\r\n\r\n") && request.len() < 8192 {
                             match stream.read(&mut byte) {
                                 Ok(1) => request.push(byte[0]),
+                                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                                    continue;
+                                }
                                 _ => break,
                             }
+                        }
+                        if !request.ends_with(b"\r\n\r\n") {
+                            continue;
                         }
                         let is_checksum = String::from_utf8_lossy(&request)
                             .starts_with("GET /pack.tar.gz.sha256 ");
