@@ -3,6 +3,8 @@ use crate::config::{Field, FieldType, OnDelete, Reference, Resource, parse_field
 
 #[derive(Clone, Copy)]
 pub(super) enum InputKind {
+    RoutePath,
+    RouteName,
     Command,
     Open,
     NewName,
@@ -26,6 +28,10 @@ pub(super) enum InputKind {
 }
 #[derive(Clone, Copy)]
 pub(super) enum ChoiceKind {
+    RouteResource,
+    RouteMethod,
+    RouteBody,
+    RouteConfirm,
     Palette,
     Source,
     FieldType,
@@ -106,8 +112,8 @@ impl App {
         // Every request exposes its path, including query parameters, before sending.
         self.input(
             InputKind::HttpPath,
-            "Chemin HTTP — remplace {id} par un identifiant",
-            &self.request_draft.path.replace("{id}", "1"),
+            "Chemin HTTP — remplace les paramètres par tes valeurs",
+            &http::sample_path(&self.request_draft.path),
         );
         Ok(())
     }
@@ -119,7 +125,7 @@ impl App {
         self.choose(
             ChoiceKind::HttpMethod,
             "Méthode HTTP",
-            &["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD"],
+            &["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"],
             vec![format!("API : {}", self.base_url)],
             0,
         );
@@ -166,7 +172,7 @@ impl App {
             value: value.into(),
         });
     }
-    fn choose(
+    pub(super) fn choose(
         &mut self,
         kind: ChoiceKind,
         title: &str,
@@ -208,6 +214,7 @@ impl App {
                 "Voir le schéma de la base de données",
                 "Mettre à jour les templates des futurs modèles",
                 "Modifier un modèle existant : champs / relations",
+                "Créer une route personnalisée",
             ],
             Vec::new(),
             0,
@@ -474,6 +481,7 @@ impl App {
 
     fn submit_input(&mut self, kind: InputKind, value: &str) -> Result<()> {
         match kind {
+            InputKind::RouteName | InputKind::RoutePath => self.route_input(kind, value)?,
             InputKind::Command => self.command(value)?,
             InputKind::Open => self.open_project(Path::new(value))?,
             InputKind::NewName => {
@@ -764,6 +772,10 @@ impl App {
 
     fn submit_choice(&mut self, kind: ChoiceKind, selected: usize) -> Result<()> {
         match kind {
+            ChoiceKind::RouteResource
+            | ChoiceKind::RouteMethod
+            | ChoiceKind::RouteBody
+            | ChoiceKind::RouteConfirm => self.route_choice(kind, selected)?,
             ChoiceKind::Palette => self.command(
                 [
                     "new",
@@ -786,6 +798,7 @@ impl App {
                     "schema",
                     "templates",
                     "model",
+                    "route-new",
                 ][selected],
             )?,
             ChoiceKind::EditModel => {
@@ -833,7 +846,7 @@ impl App {
             }
             ChoiceKind::HttpMethod => {
                 self.request_draft.method =
-                    ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD"][selected].into();
+                    ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"][selected].into();
                 self.request_draft.body = if matches!(selected, 1..=3) {
                     "{}".into()
                 } else {
@@ -942,7 +955,7 @@ impl App {
                     }
                     _ => self.input(
                         InputKind::TemplateUrl,
-                        "URL du template 0.4.0 (.tar.gz)",
+                        "URL du template 0.5.0 (.tar.gz)",
                         "",
                     ),
                 }
@@ -1180,7 +1193,7 @@ impl App {
             ChoiceKind::TemplateSource,
             "Templates pour les futurs modèles",
             &[
-                "GitHub Releases — version 0.4.0, code découpé",
+                "GitHub Releases — version 0.5.0, routes personnalisées",
                 "Dossier local",
                 "URL personnalisée",
             ],
@@ -1194,7 +1207,7 @@ impl App {
     }
     fn confirm_template_update(&mut self) {
         let source = if self.template_draft.source == 0 {
-            "GitHub Releases · version 0.4.0".into()
+            "GitHub Releases · version 0.5.0".into()
         } else {
             self.template_draft.location.clone()
         };

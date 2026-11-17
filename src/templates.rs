@@ -41,6 +41,12 @@ const LAYERED_RESOURCE_FILES: &[(&str, &str)] = &[
     ("resource/service.rs.hbs", "service.rs"),
     ("resource/repository.rs.hbs", "repository.rs"),
 ];
+pub const ROUTE_FILES: &[(&str, &str)] = &[
+    ("route/mod.rs.hbs", "mod.rs"),
+    ("route/handlers.rs.hbs", "handlers.rs"),
+    ("route/requests.rs.hbs", "requests.rs"),
+    ("route/service.rs.hbs", "service.rs"),
+];
 const MAX_ARCHIVE: u64 = 4 * 1024 * 1024;
 const MAX_EXPANDED: u64 = 16 * 1024 * 1024;
 
@@ -80,9 +86,13 @@ pub fn digest(bytes: &[u8]) -> String {
 /// Only inspect known pack locations alongside the current directory and its parents.
 pub fn discover_local(start: &Path, database: crate::config::Database) -> Option<PathBuf> {
     let folders = if database == crate::config::Database::Sqlite {
-        ["rust_sqlite_template_v2", "rust_sqlite_template_v1"]
+        [
+            "rust_sqlite_template_v3",
+            "rust_sqlite_template_v2",
+            "rust_sqlite_template_v1",
+        ]
     } else {
-        ["rust_template_v2", "rust_template_v1"]
+        ["rust_template_v3", "rust_template_v2", "rust_template_v1"]
     };
     for parent in start.ancestors() {
         for folder in folders {
@@ -105,13 +115,17 @@ fn names(format: u32) -> Vec<&'static str> {
         .chain(RESOURCE_FILES)
         .map(|(name, _)| *name)
         .collect();
-    if format == 2 {
+    if format >= 2 {
         names.extend(
             LAYERED_PROJECT_FILES
                 .iter()
                 .chain(LAYERED_RESOURCE_FILES)
                 .map(|(name, _)| *name),
         );
+    }
+    if format >= 3 {
+        names.extend(ROUTE_FILES.iter().map(|(name, _)| *name));
+        names.extend(["route/registry.rs.hbs", "route/error.rs.hbs"]);
     }
     names.extend([
         "registry.rs.hbs",
@@ -124,14 +138,14 @@ fn names(format: u32) -> Vec<&'static str> {
 impl Pack {
     pub fn project_files(&self) -> Vec<(&'static str, &'static str)> {
         let mut files = PROJECT_FILES.to_vec();
-        if self.format == 2 {
+        if self.format >= 2 {
             files.extend_from_slice(LAYERED_PROJECT_FILES);
         }
         files
     }
     pub fn resource_files(&self) -> Vec<(&'static str, &'static str)> {
         let mut files = RESOURCE_FILES.to_vec();
-        if self.format == 2 {
+        if self.format >= 2 {
             files.extend_from_slice(LAYERED_RESOURCE_FILES);
         }
         files
@@ -280,7 +294,7 @@ impl Pack {
             ensure!(files.contains_key(name), "Missing template file: {name}");
         }
         ensure!(
-            matches!(manifest.schema_version, 1 | 2)
+            matches!(manifest.schema_version, 1..=3)
                 && matches!(manifest.id.as_str(), "rust-axum-mysql" | "rust-axum-sqlite"),
             "Unsupported template pack format or stack"
         );
@@ -424,7 +438,7 @@ fn unpack(bytes: &[u8]) -> Result<BTreeMap<String, String>> {
         );
         let name = path.to_str().context("Non-UTF8 template path")?.to_owned();
         ensure!(
-            names(2).contains(&name.as_str()),
+            names(3).contains(&name.as_str()),
             "Unexpected template file: {name}"
         );
         ensure!(

@@ -29,6 +29,7 @@ parser.add_argument('--miblo', type=Path, required=True)
 parser.add_argument('--templates', type=Path, required=True)
 parser.add_argument('--database', choices=['sqlite', 'mysql'], default='sqlite')
 parser.add_argument('--capture-json', type=Path)
+parser.add_argument('--splash-capture-json', type=Path)
 parser.add_argument('--schema-capture-json', type=Path)
 parser.add_argument('--edit-capture-json', type=Path)
 parser.add_argument('--api-target-dir', type=Path, help='Build and test real SQLite CRUD routes in the TUI')
@@ -140,6 +141,10 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
     env.pop('MIBLO_TEMPLATE_BASE_URL', None)
     ui = Terminal(str(args.miblo.resolve()), checkout, env)
     try:
+        ui.wait('Votre API prend forme.')
+        ui.wait('  '.join(['█     █', '█████', '████ ', '█    ', ' ███ ']).rstrip())
+        assert any(cell.fg == '4696ff' for row in ui.screen.buffer.values() for cell in row.values()), 'Logo must be blue'
+        if args.splash_capture_json: ui.capture(args.splash_capture_json)
         ui.wait('Atelier API')
         ui.send('n'); ui.wait('Nom de la nouvelle API')
         ui.send('\x15atelier-demo\r'); ui.wait('Dossier à créer')
@@ -226,6 +231,8 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
         if args.capture_json: ui.capture(args.capture_json)
         ui.resize(90, 26); ui.wait_absent('Aperçu ·'); ui.wait('État BDD'); ui.wait('Réponse HTTP')
         ui.resize(130, 40); ui.wait('Aperçu ·')
+        # Resizing hides the code panel and moves focus to Routes; select the file again.
+        ui.send(':routes\r\x1b[Z\x1b[Z\r'); ui.wait('src/resources/product/handlers.rs')
         ui.send('e')
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline and not marker.exists(): ui.pump()
@@ -310,11 +317,30 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
             ui.send('d'); ui.wait('Schéma réel'); ui.wait('TABLE extra'); ui.send('j'); ui.wait('TABLE products'); ui.wait('stock_id → stocks.id')
             ui.send('d'); ui.wait('Réponse HTTP')
 
+        if json.loads((local_pack / 'manifest.json').read_text())['schema_version'] >= 3:
+            config_before = (project / 'miblo.yaml').read_bytes()
+            ui.send('g'); ui.wait('Créer une route — modèle associé')
+            ui.send('\x1b'); ui.wait_absent('Créer une route — modèle associé')
+            assert (project / 'miblo.yaml').read_bytes() == config_before
+            ui.send('g'); ui.wait('Créer une route — modèle associé')
+            ui.send('\x1b[B\r'); ui.wait('Méthode de la nouvelle route')
+            ui.send('\r'); ui.wait('Chemin de la route')
+            ui.send('\x15/products/active\r'); ui.wait('Nom de la route / fonction')
+            ui.send('\x15active_products\r'); ui.wait('Créer cette route ?'); ui.wait('501 non implémenté')
+            ui.send('\r'); ui.wait('Création de route : exit status: 0'); ui.wait('Aucune action en cours')
+            ui.send('e'); ui.wait('État')
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and 'custom_routes/active_products/handlers.rs' not in marker.read_text(): ui.pump()
+            assert marker.read_text().endswith('/custom_routes/active_products/handlers.rs')
+
         ui.send('r'); ui.wait('API en cours' if args.api_target_dir else 'API ne répond pas', timeout=120)
         if args.api_target_dir:
             with urllib.request.urlopen(f'http://127.0.0.1:{api_port}/products/{old_id}') as response:
                 row = json.load(response)
             assert row['title'] == 'before-edit' and row['alias'] is None and row['stock_id'] is None
+            if (project / 'src/resources/custom_routes').exists():
+                ui.send('x'); ui.wait('Chemin HTTP'); ui.wait('/products/active')
+                ui.send('\r'); ui.wait('HTTP 501'); ui.wait('Route not implemented')
         second_pid = int((root / 'api-child.pid').read_text())
         assert second_pid != first_pid
         ui.send('q')

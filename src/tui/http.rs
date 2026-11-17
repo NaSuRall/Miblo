@@ -27,7 +27,7 @@ impl Default for Request {
 }
 impl Request {
     pub fn writes(&self) -> bool {
-        !matches!(self.method.as_str(), "GET" | "HEAD")
+        !matches!(self.method.as_str(), "GET" | "HEAD" | "OPTIONS")
     }
 }
 
@@ -66,7 +66,29 @@ pub fn routes(project: &Project) -> Vec<Request> {
             });
         }
     }
+    routes.extend(project.routes.iter().map(|route| Request {
+        method: route.method.clone(),
+        path: route.path.clone(),
+        body: if route.json_body {
+            "{}".into()
+        } else {
+            String::new()
+        },
+    }));
     routes
+}
+
+pub fn sample_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            if segment.starts_with('{') && segment.ends_with('}') {
+                "1"
+            } else {
+                segment
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 pub fn request_url(base: &str, path: &str) -> Result<Url> {
@@ -95,7 +117,8 @@ pub fn request_url(base: &str, path: &str) -> Result<Url> {
 pub fn validate(base: &str, request: &Request) -> Result<()> {
     request_url(base, &request.path)?;
     ensure!(
-        ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD"].contains(&request.method.as_str()),
+        ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"]
+            .contains(&request.method.as_str()),
         "Méthode HTTP non prise en charge"
     );
     ensure!(

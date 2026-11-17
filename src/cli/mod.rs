@@ -1,5 +1,5 @@
 use crate::{
-    config::{Database, Project, Resource, parse_field, project_name},
+    config::{CustomRoute, Database, HTTP_METHODS, Project, Resource, parse_field, project_name},
     generation, runtime,
     templates::{self, Pack},
     wizard,
@@ -32,6 +32,11 @@ enum Command {
     Add(AddArgs),
     /// Add optional fields or relations to an existing model, preserving data and custom code.
     Edit(EditArgs),
+    /// Create custom HTTP routes with separate handlers and business functions.
+    Route {
+        #[command(subcommand)]
+        command: RouteCommand,
+    },
     /// Run the API; compilation and runtime errors remain visible.
     Run {
         #[arg(long, alias = "name", default_value = ".")]
@@ -59,6 +64,36 @@ enum Command {
 #[derive(Subcommand)]
 enum TemplateCommand {
     Update(TemplateArgs),
+}
+
+#[derive(Subcommand)]
+enum RouteCommand {
+    Add(RouteArgs),
+}
+
+#[derive(Args)]
+struct RouteArgs {
+    /// Snake_case name for the generated module and function.
+    name: String,
+    #[arg(long, default_value = "GET", value_parser = HTTP_METHODS.to_vec(), ignore_case = true)]
+    method: String,
+    /// Path such as /users/active or /users/{id}/activate.
+    #[arg(long)]
+    path: String,
+    /// Optional existing model associated with the route.
+    #[arg(long)]
+    resource: Option<String>,
+    /// Extract a JSON request body (POST, PUT, PATCH or DELETE).
+    #[arg(long)]
+    json_body: bool,
+    #[arg(long, default_value = ".")]
+    project: PathBuf,
+    #[arg(short, long)]
+    yes: bool,
+    #[arg(long)]
+    dry_run: bool,
+    #[command(flatten)]
+    cache: CacheArgs,
 }
 
 #[derive(Args)]
@@ -211,6 +246,36 @@ fn execute(command: Command) -> Result<()> {
     match command {
         Command::New(args) => new(args),
         Command::Ui { project } => crate::tui::run(project),
+        Command::Route {
+            command: RouteCommand::Add(args),
+        } => {
+            let route = CustomRoute {
+                name: args.name,
+                method: args.method.to_uppercase(),
+                path: args.path,
+                resource: args.resource,
+                json_body: args.json_body,
+            };
+            if !args.yes && !args.dry_run {
+                generation::add_route(
+                    &args.project,
+                    route.clone(),
+                    args.cache.offline,
+                    &args.cache.path(),
+                    true,
+                )?;
+                wizard::confirm(
+                    "Créer cette route à compléter dans l’éditeur ? Aucune migration SQL.",
+                )?;
+            }
+            generation::add_route(
+                &args.project,
+                route,
+                args.cache.offline,
+                &args.cache.path(),
+                args.dry_run,
+            )
+        }
         Command::Edit(args) => {
             let fields = if args.positional_fields.is_empty() {
                 args.fields

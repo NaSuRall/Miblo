@@ -3,6 +3,9 @@ use heck::{ToSnakeCase, ToUpperCamelCase};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fs, path::Path};
 
+mod routes;
+pub use routes::{CustomRoute, HTTP_METHODS};
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, clap::ValueEnum)]
 pub enum Database {
     #[default]
@@ -30,7 +33,7 @@ impl Database {
     }
     pub fn version(self) -> &'static str {
         match self {
-            Self::Sqlite | Self::Mysql => "0.4.0",
+            Self::Sqlite | Self::Mysql => "0.5.0",
         }
     }
 }
@@ -43,6 +46,8 @@ pub struct Project {
     pub stack: String,
     pub port: u16,
     pub resources: Vec<Resource>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routes: Vec<CustomRoute>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -172,6 +177,7 @@ impl Project {
             stack: "rust-axum-mysql".into(),
             port,
             resources,
+            routes: Vec::new(),
         }
     }
     pub fn load(path: &Path) -> Result<Self> {
@@ -236,6 +242,7 @@ impl Project {
                 }
             }
         }
+        routes::validate(self)?;
         Ok(())
     }
 }

@@ -1,0 +1,125 @@
+use super::*;
+use crate::{config::CustomRoute, templates::ROUTE_FILES};
+
+const ROUTES: &str = "src/resources/custom_routes/mod.rs";
+
+pub(super) fn supported(pack: &Pack, project: &Project) -> Result<()> {
+    ensure!(
+        project.routes.is_empty()
+            || (pack.format >= 3 && pack.features.iter().any(|f| f == "custom-routes")),
+        "Ce template ne permet pas encore de créer des routes. Appuie sur u dans Miblo ou utilise miblo template update (version 0.5.0 ou ultérieure), puis réessaie. Aucun fichier modifié."
+    );
+    Ok(())
+}
+
+fn route_files(pack: &Pack, route: &CustomRoute, files: &mut Files) -> Result<()> {
+    let data = json!({ "name": route.name, "method": route.method.to_lowercase(), "path": route.path,
+        "parameters": route.parameters(), "json_body": route.json_body });
+    for (template, output) in ROUTE_FILES {
+        files.insert(
+            format!("src/resources/custom_routes/{}/{output}", route.name),
+            render_source(pack, template, &data)?,
+        );
+    }
+    Ok(())
+}
+
+fn registry(pack: &Pack, project: &Project, files: &mut Files) -> Result<()> {
+    files.insert(
+        ROUTES.into(),
+        render_source(pack, "route/registry.rs.hbs", &project_data(project))?,
+    );
+    Ok(())
+}
+
+pub(super) fn create_files(pack: &Pack, project: &Project, files: &mut Files) -> Result<()> {
+    supported(pack, project)?;
+    if project.routes.is_empty() {
+        return Ok(());
+    }
+    for route in &project.routes {
+        route_files(pack, route, files)?;
+    }
+    files.insert(
+        "src/resources/custom_routes/error.rs".into(),
+        render_source(pack, "route/error.rs.hbs", &project_data(project))?,
+    );
+    registry(pack, project, files)
+}
+
+pub(super) fn inspect(root: &Path, project: &Project, state: &State) -> Result<()> {
+    if !project.routes.is_empty() {
+        safe_path(root, ROUTES)?;
+        let ancestor = state
+            .generated
+            .get(ROUTES)
+            .context("Missing custom route registry baseline")?;
+        let current = fs::read_to_string(root.join(ROUTES))?;
+        ensure!(
+            edit::format_source(&current)? == edit::format_source(ancestor)?,
+            "Le registre des routes personnalisées a été modifié. Conserve tes changements dans les handlers ou services et restaure {ROUTES} avant de générer du code."
+        );
+    }
+    Ok(())
+}
+
+pub fn add_route(
+    root: &Path,
+    route: CustomRoute,
+    offline: bool,
+    cache: &Path,
+    dry_run: bool,
+) -> Result<()> {
+    route.validate()?;
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(OperationLock::acquire(root)?)
+    };
+    let mut originals = BTreeMap::new();
+    for path in [CONFIG, STATE, REGISTRY] {
+        originals.insert(path.into(), fs::read(root.join(path))?);
+    }
+    let (mut project, mut state) = super::inspect(root)?;
+    pin_resource_templates(&project, &mut state);
+    let first = project.routes.is_empty();
+    if !first {
+        originals.insert(ROUTES.into(), fs::read(root.join(ROUTES))?);
+    }
+    project.routes.push(route.clone());
+    project.validate()?;
+    let pack = Pack::pinned(&state.template, offline, cache)?;
+    supported(&pack, &project)?;
+    ensure!(
+        pack.id == project.stack,
+        "Template stack does not match the project"
+    );
+    let mut files = Files::new();
+    route_files(&pack, &route, &mut files)?;
+    if first {
+        files.insert(
+            "src/resources/custom_routes/error.rs".into(),
+            render_source(&pack, "route/error.rs.hbs", &project_data(&project))?,
+        );
+    }
+    registry(&pack, &project, &mut files)?;
+    metadata(
+        &pack,
+        &project,
+        state.next_migration,
+        state.generated,
+        state.resource_templates,
+        &mut files,
+    )?;
+    preflight(root, &files, &originals)?;
+    if dry_run {
+        show_plan(&files);
+        return Ok(());
+    }
+    commit(root, &files, &originals)?;
+    println!(
+        "Route créée : {} {}\nComplète src/resources/custom_routes/{}/service.rs dans ton éditeur.\nLe handler renvoie HTTP 501 jusqu’à son implémentation. Redémarre l’API pour charger cette route. Aucune migration SQL.",
+        route.method, route.path, route.name
+    );
+    Ok(())
+}

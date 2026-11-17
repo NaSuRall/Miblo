@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate and run a real SQLite API, including empty-project startup and CRUD."""
 import argparse
+import route_checks
 import relation_checks
 import evolution_checks
 from concurrent.futures import ThreadPoolExecutor
@@ -80,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         assert (project / '.env').exists() and not (project / 'compose.yaml').exists()
         if args.remote:
             lock = json.loads((project / '.miblo/state.json').read_text())['template']
-            assert lock['local_path'] is None and lock['url'].endswith('/v0.4.0/rust-axum-sqlite.tar.gz')
+            assert lock['local_path'] is None and lock['url'].endswith('/v0.5.0/rust-axum-sqlite.tar.gz')
         cargo('build')
         assert not (project / 'miblo.sqlite').exists()
         api = start()
@@ -98,6 +99,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         if args.legacy_templates:
             assert not (project / 'src/resources/user/service.rs').exists()
             assert (project / 'src/resources/category/service.rs').exists()
+        custom_routes = route_checks.generate(cli, project, "User", "/users")
         relation_checks.add_models(cli)
         cli('db', 'migrate')
         cli('db', 'check')
@@ -107,6 +109,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         cargo('test')
         cargo('build')
         api = start()
+        if custom_routes: route_checks.requests(request, "/users")
         relation_checks.requests(request)
         value = dict(email='first@example.test', name='First', note='hello', score=1.5, active=True, token='private-example')
         created = request('POST', '/users', value, 201)
@@ -156,6 +159,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         evolution_checks.requests(request, '/users', path, dict(value, note=None, active=False, score=request('GET', path)['score']), layered=(project / 'src/resources/user/service.rs').exists())
         with sqlite3.connect(project / 'miblo.sqlite') as connection:
             assert connection.execute('SELECT COUNT(*) FROM audit').fetchone()[0] > 0, 'Custom trigger no longer works'
+        if custom_routes: route_checks.requests(request, "/users")
         request('DELETE', path, expected=204)
         request('DELETE', path, expected=404)
         print('PASS: automatic SQLite setup, empty startup, models/tables, migrations, customized code preservation, CRUD, concurrent PATCH, unique/private/nullable fields and restart persistence')

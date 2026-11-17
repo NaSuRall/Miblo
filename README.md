@@ -4,8 +4,8 @@ Create and extend a Rust REST API using Axum, SQLx and SQLite or MySQL. The CLI 
 project settings and resources, downloads a versioned Handlebars template pack,
 and writes a normal Rust project that runs independently of Miblo.
 
-This development version is **0.7.0**. It supports template formats **1 and 2**, with new projects using format **2** and
-`rust-axum-mysql` or `rust-axum-sqlite`, both version **0.4.0**. Neither publishing a crate nor publishing a GitHub
+This development version is **0.8.0**. It supports template formats **1, 2 and 3**, with new projects using format **3** and
+`rust-axum-mysql` or `rust-axum-sqlite`, both version **0.5.0**. Neither publishing a crate nor publishing a GitHub
 Release is performed by the build or packaging scripts.
 
 ## Install from this checkout
@@ -23,7 +23,7 @@ There is no dependency on an installed `sqlx-cli`.
 Once this version is published, installation will be:
 
 ```sh
-cargo install miblo_cli_v2 --version 0.7.0 --locked
+cargo install miblo_cli_v2 --version 0.8.0 --locked
 ```
 
 ## Full-screen API workspace
@@ -35,6 +35,8 @@ in the current directory. You can also open a specific project directly:
 miblo
 miblo ui --project path/to/my-api
 ```
+
+A blue MIBLO wordmark is written on screen at startup (under one second). Any key skips it; Ctrl+C quits. Set `MIBLO_NO_ANIMATION=1` to disable it. Scriptable commands never show the animation.
 
 The workspace includes a resource list, file tree, route tester, API/database
 status cards, a small read-only code preview and bounded process logs. It supports three themes for the
@@ -54,22 +56,23 @@ current session and adapts its panels to the terminal size (minimum 70 × 20).
 | `u` | Update templates used for future models |
 | `r` / `s` | Start / stop the API |
 | `c` | Run `cargo check` |
+| `g` | Create a custom route with a handler and business function |
 | `x` | Test the selected route (path / identifier / query / JSON) |
-| `f` | Custom HTTP request: GET, POST, PATCH, PUT, DELETE or HEAD |
-| `e` | Open the selected file in an external editor |
+| `f` | Custom HTTP request: GET, POST, PATCH, PUT, DELETE, HEAD or OPTIONS |
+| `e` | Open the selected file or route handler in an external editor |
 | `m` | Add fields / relations to an existing model |
 | `v` | Show / hide the six-line code preview |
 | `t` / `F5` | Change theme / refresh project |
 | `?` / `q` | Help / quit |
 
 Commands include `:new`, `:open path/to/project`, `:add`, `:model`, `:run`, `:stop`,
-`:db`, `:migrate`, `:schema`, `:templates`, `:routes`, `:route`, `:request`, `:code`, `:check`, `:test`, `:doctor`, `:edit`, `:refresh`, `:theme`, `:help`, `:quit`.
+`:db`, `:migrate`, `:schema`, `:templates`, `:routes`, `:route-new`, `:route`, `:request`, `:code`, `:check`, `:test`, `:doctor`, `:edit`, `:refresh`, `:theme`, `:help`, `:quit`.
 Creation and resource addition use popup forms with arrow-key selections and
 Space to toggle field options. Escape cancels a form before generation.
 Project creation asks for the database (SQLite by default), then the template source: GitHub release, local pack or
 custom archive URL. The UI suggests a valid pack found at
-`miblo_templates/rust_template_v2` for MySQL or
-`miblo_templates/rust_sqlite_template_v2` for SQLite, relative to the current
+`miblo_templates/rust_template_v3` for MySQL or
+`miblo_templates/rust_sqlite_template_v3` for SQLite, relative to the current
 directory or its parents (the folder directly inside a template checkout also
 works). A matching `MIBLO_TEMPLATE_DIR` takes priority when set.
 The suggested local path is preselected and remains reviewable before generation;
@@ -133,8 +136,7 @@ for input. Explicit commands remain available for scripts and automation.
 
 Press `a` to add a model such as `User`. Select its fields and options (nullable,
 unique, private), then confirm: Miblo generates the Rust model, SQL migration and
-CRUD routes. Existing application code is preserved. Changes to an existing
-model/schema still need handwritten migrations; the interface adds new models.
+CRUD routes. Existing application code is preserved. Press `m` to add optional fields or relations to an existing model; Miblo generates an additive migration.
 
 **SQLite:** Miblo creates `.env`, initializes `miblo.sqlite`, and applies migrations
 after creating a project and after adding models while the API is stopped.
@@ -210,7 +212,7 @@ keys and foreign keys can still be inspected in the actual schema.
 **Older projects:** press **u**, choose the published pack, a local directory or
 a custom archive URL, and confirm. This updates only the template pin for future
 models; no existing Rust files, tables or applied migrations are rewritten.
-The current packs are version **0.4.0**, format **2**, and require CLI **0.7+**. The previous 0.3.0 packs remain available. The
+The current packs are version **0.5.0**, format **3**, and require CLI **0.8+**. The previous 0.3.0 and 0.4.0 packs remain available. The
 CLI refuses to silently generate a relation with an older pack. Existing custom
 error handlers are preserved; if an older parent route reports a generic error
 on a protected deletion, the database still blocks it. Update its error mapping
@@ -219,7 +221,7 @@ in your editor if you want a specific response.
 ```sh
 miblo template update --project my-api
 # Local development:
-miblo template update --project my-api --template-dir ../miblo_templates/rust_sqlite_template_v2
+miblo template update --project my-api --template-dir ../miblo_templates/rust_sqlite_template_v3
 ```
 
 ## Guided creation
@@ -238,8 +240,8 @@ Authentication is deliberately deferred.
 The default template URLs depend on the chosen database:
 
 ```text
-https://github.com/NaSuRall/miblo_templates/releases/download/v0.4.0/rust-axum-mysql.tar.gz
-https://github.com/NaSuRall/miblo_templates/releases/download/v0.4.0/rust-axum-sqlite.tar.gz
+https://github.com/NaSuRall/miblo_templates/releases/download/v0.5.0/rust-axum-mysql.tar.gz
+https://github.com/NaSuRall/miblo_templates/releases/download/v0.5.0/rust-axum-sqlite.tar.gz
 ```
 
 Each archive has a `.sha256` sidecar in its versioned GitHub release.
@@ -247,7 +249,7 @@ No local template folder is needed for the default remote command.
 For template development, with both repositories checked out next to one another:
 
 ```sh
-miblo new shop-api --database mysql --template-dir ../miblo_templates/rust_template_v2
+miblo new shop-api --database mysql --template-dir ../miblo_templates/rust_template_v3
 ```
 
 Do not point this option at the legacy `rust_template/config.yaml`: the new
@@ -258,7 +260,7 @@ pack has a `manifest.json` and separate `project/` and `resource/` templates.
 
 ```sh
 miblo new shop-api \
-  --template-dir ../miblo_templates/rust_template_v2 \
+  --template-dir ../miblo_templates/rust_template_v3 \
   --resource Product \
   --field title:string:unique \
   --field 'description:text?' \
@@ -373,7 +375,7 @@ cargo run
 Stop the API before editing. Generation does **not** apply the migration, including
 on SQLite: the orange BDD status signals that it is pending. Use **b → Appliquer
 les migrations**, then **r** to rebuild/restart. The generated API also applies
-pending migrations on startup. This works with both legacy **0.3.0** and current **0.4.0** remote packs;
+pending migrations on startup. This works with both legacy **0.3.0** and current **0.5.0** remote packs;
 no local template directory is required. Each model keeps its own pinned pack.
 
 Miblo saves pristine generated resource sources in `.miblo/state.json` and uses
@@ -382,7 +384,7 @@ three-way merging to retain custom Rust changes. `rustfmt` must be installed
 invalid Rust syntax, generation aborts before changing any project files. Review
 and reconcile the conflicting custom code before retrying. Projects from earlier
 versions reconstruct their first baseline from their pinned template. Keep using
-Miblo **0.7+** once new generation metadata is saved.
+Miblo **0.8+** for projects with custom routes.
 
 Replaced source/configuration/state files are copied to
 `.miblo/backups/<migration-version>/`. These are code backups, **not database
@@ -447,11 +449,11 @@ JSON responses. The scaffold has no authentication or authorization yet.
 
 ```sh
 miblo new shop-api --template-base-url https://templates.example.com --yes
-# Fetches /v0.4.0/rust-axum-mysql.tar.gz and its .sha256 sidecar.
+# Fetches /v0.5.0/rust-axum-mysql.tar.gz and its .sha256 sidecar.
 
 miblo new shop-api \
   --template-url https://templates.example.com/custom/api.tar.gz \
-  --template-version 0.4.0 --yes
+  --template-version 0.5.0 --yes
 ```
 
 `MIBLO_TEMPLATE_BASE_URL` can set the default base URL. `--sha256 HEX` provides a
@@ -501,7 +503,7 @@ To test the actual template output with MySQL installed (`mysql` and `mysqld`):
 cargo build --locked
 python3 scripts/smoke_mysql.py \
   --miblo target/debug/miblo \
-  --templates ../miblo_templates/rust_template_v2
+  --templates ../miblo_templates/rust_template_v3
 ```
 
 This script creates its own temporary MySQL data directory and local ports,
@@ -517,7 +519,7 @@ SQLite has a separate end-to-end test, with no database server prerequisite:
 
 ```sh
 python3 scripts/smoke_sqlite.py --miblo target/debug/miblo \
-  --templates ../miblo_templates/rust_sqlite_template_v2 \
+  --templates ../miblo_templates/rust_sqlite_template_v3 \
   --target-dir target/sqlite-smoke
 ```
 
@@ -535,7 +537,7 @@ and must be reported as unresponsive:
 ```sh
 python3 scripts/smoke_tui.py \
   --miblo target/debug/miblo \
-  --database sqlite --templates ../miblo_templates/rust_sqlite_template_v2 \
+  --database sqlite --templates ../miblo_templates/rust_sqlite_template_v3 \
   --api-target-dir /tmp/miblo-tui-api-target
 ```
 
@@ -550,3 +552,41 @@ types, automatic many-to-many relations, OpenAPI, existing-schema evolution, the
 backend. These are not implemented by this release.
 
 License: MIT.
+
+## Créer une route depuis Miblo
+
+Appuyez sur **g** ou choisissez **Créer une route personnalisée** dans la palette.
+Sélectionnez le modèle associé (ou une route indépendante), la méthode HTTP,
+le chemin, le nom de la fonction et éventuellement un corps JSON. La confirmation
+affiche les fichiers à créer. `Échap` annule sans écrire.
+
+```sh
+miblo route add active_users --method GET --path /users/active --resource User --yes
+miblo route add activate_user --method POST --path '/users/{id}/activate' --resource User --json-body --yes
+# --dry-run affiche les fichiers prévus sans écrire ; --offline réutilise le cache.
+```
+
+La route reçoit son propre dossier `src/resources/custom_routes/<nom>/` :
+`mod.rs` (branchement HTTP), `handlers.rs` (extraction et réponse),
+`requests.rs` (paramètres à typer), `service.rs` (fonction métier à compléter).
+Les paramètres du chemin sont des chaînes, les filtres une table de chaînes,
+et le corps JSON facultatif un `serde_json::Value`, faciles à remplacer par vos DTO.
+Le pool SQL de l’API est transmis à la fonction métier.
+
+La réponse initiale est **501 Not Implemented**. Remplacez le corps de la fonction
+métier, puis redémarrez l’API. Sélectionnez la route et appuyez sur **e** pour ouvrir
+son handler dans l’éditeur, ou sur **x** pour la tester (paramètres modifiables, JSON
+prérempli si nécessaire). Aucun changement de table ni migration n’est généré.
+Les autres handlers, services et fichiers personnalisés restent intacts.
+
+Les chemins utilisent `/segments/{parametres}` sans query string ni wildcard.
+Les doublons de méthode/chemin, les collisions de paramètres et les conflits avec
+le CRUD ou `/health` sont refusés avant écriture ; GET réserve aussi HEAD.
+Les routes branchées manuellement hors de Miblo restent à vérifier par vos soins.
+Les deux registres `src/resources/mod.rs` et `custom_routes/mod.rs` sont gérés
+par Miblo : personnalisez les fichiers de chaque route plutôt que ces registres.
+
+Pour un projet existant, utilisez **u → GitHub Releases** ou `miblo template update`
+avant la première création de route. Le pack **0.5.0** est nécessaire ; les modèles
+existants gardent leurs templates d’origine et leur code personnalisé. Les templates
+restent téléchargés et mis en cache, sans être intégrés au binaire.

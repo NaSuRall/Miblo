@@ -281,7 +281,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(
             List::new(routes)
                 .block(panel(
-                    " Routes · x tester · f libre ",
+                    " Routes · g créer · x tester · e code ",
                     app.focus == Focus::Routes,
                     colors,
                 ))
@@ -408,7 +408,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         Paragraph::new(vec![
             Line::from(app.notice.as_str()),
             Line::from(Span::styled(
-                "Tab panneaux · d schéma · x tester · b BDD · e éditeur · v code · ? aide",
+                "Tab panneaux · g route · d schéma · x tester · b BDD · e éditeur · v code · ? aide",
                 Style::default().fg(colors.muted),
             )),
         ])
@@ -684,7 +684,7 @@ fn draw_dialog(frame: &mut Frame, dialog: &mut forms::Dialog, colors: Palette) {
             );
         }
         Dialog::Help => {
-            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter • m modifier un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  x tester la route • f requête HTTP libre • v masquer le code\n  d schéma BDD • p réel/déclaré • u mettre à jour les templates\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, model, run, stop, check, test\n  db, migrate, schema, templates, routes, request, code, edit, refresh\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
+            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter • m modifier un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  g créer une route • x tester • f requête HTTP libre • v masquer le code\n  d schéma BDD • p réel/déclaré • u mettre à jour les templates\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, model, run, stop, check, test\n  db, migrate, schema, templates, route-new, routes, request, code, edit, refresh\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
                 .style(Style::default().fg(colors.foreground)).block(panel(" Aide Miblo ", true, colors)).wrap(Wrap { trim: false }), area);
         }
     }

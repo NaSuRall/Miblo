@@ -1093,3 +1093,211 @@ fn old_projects_opt_into_relation_templates_without_rewriting_code() {
     );
     success(cli(&["doctor"], &root));
 }
+
+fn route_pack(dir: &Path) -> PathBuf {
+    let root = layered_pack(dir);
+    fs::write(root.join("manifest.json"), r#"{"schema_version":3,"id":"rust-axum-sqlite","version":"0.5.0","features":["relations","layered-resources","custom-routes"]}"#).unwrap();
+    fs::write(root.join("registry.rs.hbs"), "{{#each resources}}pub mod {{module}};\n{{/each}}{{#if routes}}pub mod custom_routes;\n{{/if}}").unwrap();
+    fs::create_dir(root.join("route")).unwrap();
+    fs::write(
+        root.join("route/registry.rs.hbs"),
+        "pub mod error;\n{{#each routes}}pub mod {{name}};\n{{/each}}",
+    )
+    .unwrap();
+    fs::write(root.join("route/error.rs.hbs"), "pub struct RouteError;\n").unwrap();
+    fs::write(
+        root.join("route/mod.rs.hbs"),
+        "pub mod handlers; pub mod requests; pub mod service;\n",
+    )
+    .unwrap();
+    for file in ["handlers", "requests", "service"] {
+        fs::write(
+            root.join(format!("route/{file}.rs.hbs")),
+            "pub fn {{name}}() {}\n",
+        )
+        .unwrap();
+    }
+    root
+}
+
+#[test]
+fn custom_routes_preserve_code_migrations_and_model_evolution() {
+    let dir = TempDir::new().unwrap();
+    let root = editable_project(dir.path());
+    let before = tree(&root);
+    failure(
+        cli(
+            &[
+                "route",
+                "add",
+                "active_users",
+                "--path",
+                "/users/active",
+                "--yes",
+            ],
+            &root,
+        ),
+        "miblo template update",
+    );
+    assert_eq!(tree(&root), before);
+    let template = route_pack(&dir.path().join("routes"));
+    success(cli(
+        &[
+            "template",
+            "update",
+            "--template-dir",
+            template.to_str().unwrap(),
+        ],
+        &root,
+    ));
+    let before = tree(&root);
+    let args = [
+        "route",
+        "add",
+        "active_users",
+        "--path",
+        "/users/active",
+        "--resource",
+        "User",
+        "--offline",
+    ];
+    success(cli(&[&args[..], &["--dry-run"]].concat(), &root));
+    assert_eq!(tree(&root), before);
+    success(cli(&[&args[..], &["--yes"]].concat(), &root));
+    assert_eq!(
+        tree(&root.join("migrations")),
+        before
+            .iter()
+            .filter(|(p, _)| p.starts_with(root.join("migrations")))
+            .cloned()
+            .collect::<Vec<_>>()
+    );
+    let state: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join(".miblo/state.json")).unwrap()).unwrap();
+    assert_eq!(state["next_migration"], 2);
+    let service = root.join("src/resources/custom_routes/active_users/service.rs");
+    fs::write(&service, "pub fn active_users() -> u32 { 42 }\n").unwrap();
+    success(cli(
+        &[
+            "route",
+            "add",
+            "activate_user",
+            "--method",
+            "post",
+            "--path",
+            "/users/{id}/activate",
+            "--json-body",
+            "--yes",
+        ],
+        &root,
+    ));
+    success(cli(&["add", "Group", "title:string", "--yes"], &root));
+    success(cli(&["edit", "User", "nickname:string?", "--yes"], &root));
+    assert_eq!(
+        fs::read_to_string(&service).unwrap(),
+        "pub fn active_users() -> u32 { 42 }\n"
+    );
+    assert!(
+        fs::read_to_string(root.join("src/resources/mod.rs"))
+            .unwrap()
+            .contains("pub mod custom_routes;")
+    );
+    let before = tree(&root);
+    for (name, method, path) in [
+        ("duplicate", "GET", "/users/active"),
+        ("bad_head", "HEAD", "/users"),
+        ("bad_param", "PUT", "/users/{user_id}"),
+    ] {
+        assert!(
+            !cli(
+                &[
+                    "route", "add", name, "--method", method, "--path", path, "--yes"
+                ],
+                &root
+            )
+            .status
+            .success()
+        );
+        assert_eq!(tree(&root), before);
+    }
+    fs::write(
+        root.join("src/resources/custom_routes/mod.rs"),
+        "// custom registration\n",
+    )
+    .unwrap();
+    let before = tree(&root);
+    failure(
+        cli(
+            &["route", "add", "extra", "--path", "/extra", "--yes"],
+            &root,
+        ),
+        "registre",
+    );
+    assert_eq!(tree(&root), before);
+}
+
+#[test]
+fn route_archives_work_offline_and_refuse_file_collisions() {
+    let dir = TempDir::new().unwrap();
+    let template = route_pack(dir.path());
+    let server = Server::new(archive(&template, false), None);
+    let cache = dir.path().join("cache");
+    success(cli(
+        &[
+            "new",
+            "sample",
+            "--database",
+            "sqlite",
+            "--template-url",
+            &server.url,
+            "--template-version",
+            "0.5.0",
+            "--cache-dir",
+            cache.to_str().unwrap(),
+            "--yes",
+        ],
+        dir.path(),
+    ));
+    drop(server);
+    let root = dir.path().join("sample");
+    success(cli(
+        &[
+            "route",
+            "add",
+            "echo",
+            "--path",
+            "/echo/{slug}",
+            "--method",
+            "POST",
+            "--json-body",
+            "--offline",
+            "--cache-dir",
+            cache.to_str().unwrap(),
+            "--yes",
+        ],
+        &root,
+    ));
+    let collision = root.join("src/resources/custom_routes/manual");
+    fs::create_dir_all(&collision).unwrap();
+    fs::write(collision.join("service.rs"), "// handwritten\n").unwrap();
+    let before = tree(&root);
+    assert!(
+        !cli(
+            &[
+                "route",
+                "add",
+                "manual",
+                "--path",
+                "/manual",
+                "--offline",
+                "--cache-dir",
+                cache.to_str().unwrap(),
+                "--yes"
+            ],
+            &root
+        )
+        .status
+        .success()
+    );
+    assert_eq!(tree(&root), before);
+}

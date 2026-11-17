@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test the real generated API against an isolated MySQL server. No existing DB is used."""
 import argparse
+import route_checks
 import relation_checks
 import evolution_checks
 import json
@@ -82,6 +83,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
         assert (project / 'migrations/000002_create_categories.sql').is_file()
         def cli(*arguments):
             subprocess.run([miblo, *arguments], cwd=project, check=True, env=generation_env)
+        custom_routes = route_checks.generate(cli, project, "Product", "/products")
         relation_checks.add_models(cli)
         subprocess.run([miblo, 'db', 'migrate'], cwd=project, check=True, env=generation_env)
         subprocess.run([miblo, 'db', 'migrate'], cwd=project, check=True, env=generation_env)
@@ -110,6 +112,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
             try: request('GET', '/health'); break
             except (OSError, urllib.error.URLError): time.sleep(.1)
         else: raise RuntimeError('Generated API did not become ready')
+        if custom_routes: route_checks.requests(request, "/products")
         relation_checks.requests(request)
         value = dict(title='first', description='hello', price=1.5, quantity=2, active=True, token='never-return-this')
         created = request('POST', '/products', value, 201)
@@ -146,6 +149,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
             except (OSError, urllib.error.URLError): time.sleep(.1)
         else: raise RuntimeError('Evolved API did not start')
         evolution_checks.requests(request, '/products', resource, dict(value, description=None, quantity=0, active=False), layered=(project / 'src/resources/product/service.rs').exists())
+        if custom_routes: route_checks.requests(request, "/products")
         request('DELETE', resource, expected=204)
         request('DELETE', resource, expected=404)
         request('GET', resource, expected=404)

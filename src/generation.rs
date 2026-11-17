@@ -17,7 +17,9 @@ const CONFIG: &str = "miblo.yaml";
 const STATE: &str = ".miblo/state.json";
 
 mod edit;
+mod routes;
 pub use edit::{alteration_sql, edit};
+pub use routes::add_route;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -39,7 +41,7 @@ type Files = BTreeMap<String, String>;
 
 fn render_source(pack: &Pack, template: &str, data: &Value) -> Result<String> {
     let source = pack.render(template, data)?;
-    if pack.format == 2 && template.ends_with(".rs.hbs") {
+    if pack.format >= 2 && template.ends_with(".rs.hbs") {
         edit::format_source(&source)
     } else {
         Ok(source)
@@ -48,7 +50,7 @@ fn render_source(pack: &Pack, template: &str, data: &Value) -> Result<String> {
 
 fn project_data(project: &Project) -> Value {
     json!({ "project_name": project.name, "crate_name": project.name.replace('-', "_"), "port": project.port,
-        "resources": project.resources.iter().map(|r| json!({"module": r.module()})).collect::<Vec<_>>() })
+        "routes": project.routes, "resources": project.resources.iter().map(|r| json!({"module": r.module()})).collect::<Vec<_>>() })
 }
 
 fn resource_data(resource: &Resource, database: Database) -> Value {
@@ -168,6 +170,7 @@ pub fn create(project: &Project, pack: &Pack, destination: &Path, dry_run: bool)
             &mut files,
         )?;
     }
+    routes::create_files(pack, project, &mut files)?;
     // Keep migration directory present even when starting without a resource.
     files.insert("migrations/.gitkeep".into(), String::new());
     if project.database() == Database::Sqlite {
@@ -249,6 +252,7 @@ pub fn inspect(root: &Path) -> Result<(Project, State)> {
         ),
         "src/resources/mod.rs was customized. Move custom route registration to src/lib.rs and restore the generated registry before adding a resource; nothing was changed"
     );
+    routes::inspect(root, &project, &state)?;
     Ok((project, state))
 }
 
@@ -359,6 +363,7 @@ pub fn update_template(root: &Path, pack: &Pack, dry_run: bool) -> Result<()> {
         pack.features.iter().any(|f| f == "relations"),
         "Choose a template with relations support (official version 0.3.0 or later)"
     );
+    routes::supported(pack, &project)?;
     // Check the registry contract without replacing the user's formatted file.
     ensure!(
         registry_matches(
@@ -577,7 +582,10 @@ fn registry_matches(bytes: &[u8], project: &Project, expected: &str) -> bool {
         modules.push(module.to_owned());
         end += "pubmod".len() + module.len() + 1;
     }
-    let original: Vec<_> = project.resources.iter().map(Resource::module).collect();
+    let mut original: Vec<_> = project.resources.iter().map(Resource::module).collect();
+    if !project.routes.is_empty() {
+        original.push("custom_routes".into());
+    }
     let mut sorted = original.clone();
     sorted.sort();
     modules.sort();

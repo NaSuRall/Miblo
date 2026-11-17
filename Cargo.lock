@@ -1287,6 +1287,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
+name = "matchit"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
+
+[[package]]
 name = "md-5"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1304,7 +1310,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "miblo_cli_v2"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1316,6 +1322,7 @@ dependencies = [
  "handlebars",
  "heck",
  "libc",
+ "matchit",
  "percent-encoding",
  "ratatui",
  "reqwest",
