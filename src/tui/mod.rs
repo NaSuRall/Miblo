@@ -372,6 +372,7 @@ impl App {
             }
             KeyCode::Char('n') => self.start_new()?,
             KeyCode::Char('a') => self.start_add()?,
+            KeyCode::Char('m') => self.start_model_edit()?,
             KeyCode::Char('b') => self.database_menu()?,
             KeyCode::Char('o') => self.input(forms::InputKind::Open, "Dossier du projet", "."),
             KeyCode::Char('r') => self.run_api()?,
@@ -655,6 +656,7 @@ impl App {
             "q" | "quit" => self.request_quit()?,
             "new" => self.start_new()?,
             "add" => self.start_add()?,
+            "model" => self.start_model_edit()?,
             "routes" => {
                 self.show_schema = false;
                 self.focus = Focus::Routes;
@@ -910,7 +912,7 @@ mod tests {
         let rendered = screen(&mut app, 130, 40);
         for label in [
             "MIBLO",
-            "Modèles / tables",
+            "Modèles · m modifier",
             "Fichiers",
             "Atelier API",
             "Logs",

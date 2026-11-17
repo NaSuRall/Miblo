@@ -4,7 +4,7 @@ Create and extend a Rust REST API using Axum, SQLx and SQLite or MySQL. The CLI 
 project settings and resources, downloads a versioned Handlebars template pack,
 and writes a normal Rust project that runs independently of Miblo.
 
-This development version is **0.5.0**. It uses template format **1** with
+This development version is **0.6.0**. It uses template format **1** with
 `rust-axum-mysql` or `rust-axum-sqlite`, both version **0.3.0**. Neither publishing a crate nor publishing a GitHub
 Release is performed by the build or packaging scripts.
 
@@ -23,7 +23,7 @@ There is no dependency on an installed `sqlx-cli`.
 Once this version is published, installation will be:
 
 ```sh
-cargo install miblo_cli_v2 --version 0.5.0 --locked
+cargo install miblo_cli_v2 --version 0.6.0 --locked
 ```
 
 ## Full-screen API workspace
@@ -57,11 +57,12 @@ current session and adapts its panels to the terminal size (minimum 70 × 20).
 | `x` | Test the selected route (path / identifier / query / JSON) |
 | `f` | Custom HTTP request: GET, POST, PATCH, PUT, DELETE or HEAD |
 | `e` | Open the selected file in an external editor |
+| `m` | Add fields / relations to an existing model |
 | `v` | Show / hide the six-line code preview |
 | `t` / `F5` | Change theme / refresh project |
 | `?` / `q` | Help / quit |
 
-Commands include `:new`, `:open path/to/project`, `:add`, `:run`, `:stop`,
+Commands include `:new`, `:open path/to/project`, `:add`, `:model`, `:run`, `:stop`,
 `:db`, `:migrate`, `:schema`, `:templates`, `:routes`, `:route`, `:request`, `:code`, `:check`, `:test`, `:doctor`, `:edit`, `:refresh`, `:theme`, `:help`, `:quit`.
 Creation and resource addition use popup forms with arrow-key selections and
 Space to toggle field options. Escape cancels a form before generation.
@@ -333,7 +334,7 @@ Existing resource files and migrations are not regenerated. It updates:
 - `.miblo/state.json`: pinned template and consistency metadata.
 
 Customize resource files freely and register handwritten routes in `src/lib.rs`.
-Whitespace-only registry formatting is accepted. If registry content changes,
+Whitespace-only registry formatting and rustfmt reordering of module declarations are accepted. If registry content changes,
 Miblo stops instead of overwriting it. Restore that generated registry after
 moving custom registration to `src/lib.rs` to resume additions.
 
@@ -348,6 +349,51 @@ The multi-file operation is not an atomic database transaction.
 Commit `miblo.yaml` and `.miblo/state.json` along with your code. A local template
 path is a development option and must remain available and unchanged. A remote
 pack is pinned by URL, version, SHA-256 and content fingerprint for later additions.
+
+## Evolve existing models without deleting rows
+
+Press **m** (or `:model` / the action palette), choose a model, then add fields or
+relations with the arrows. Existing fields and the automatic primary key are
+shown first. New fields are always **optional**: existing rows keep `NULL` until
+you fill them through the generated PATCH routes. Relations can target any
+existing model, including one created later or the same model.
+
+Review the SQL before generating; PageUp/PageDown scroll long dialog details.
+Miblo creates a new `ALTER TABLE` migration and updates the Rust model and CRUD
+handlers. It never drops/rebuilds the table, disables foreign keys, or rewrites
+old migrations. Unique fields and relation indexes are generated too.
+
+```sh
+miblo edit User 'nickname:string?:unique' 'group_id:int?:ref=Group:on_delete=set_null' --dry-run
+miblo edit User 'nickname:string?:unique' 'group_id:int?:ref=Group:on_delete=set_null' --yes
+miblo db migrate
+cargo run
+```
+
+Stop the API before editing. Generation does **not** apply the migration, including
+on SQLite: the orange BDD status signals that it is pending. Use **b → Appliquer
+les migrations**, then **r** to rebuild/restart. The generated API also applies
+pending migrations on startup. This uses the existing remote **0.3.0** packs;
+no local template directory or new template download is required if cached.
+
+Miblo saves pristine generated resource sources in `.miblo/state.json` and uses
+three-way merging to retain custom Rust changes. `rustfmt` must be installed
+(`rustup component add rustfmt`); formatting can change. On overlapping edits or
+invalid Rust syntax, generation aborts before changing any project files. Review
+and reconcile the conflicting custom code before retrying. Projects from earlier
+versions reconstruct their first baseline from their pinned template. Keep using
+Miblo **0.6+** once new generation metadata is saved.
+
+Replaced source/configuration/state files are copied to
+`.miblo/backups/<migration-version>/`. These are code backups, **not database
+backups**. If reverting before application, restore all backed-up files and remove
+the corresponding unapplied migration together. Never remove an applied migration
+or restore an old model independently of its database schema.
+
+This editor currently supports **additions**. Renaming/removing columns, changing
+existing types, making fields required and changing existing relationship rules
+need a separate explicit migration; these operations are not generated by the
+interface. It does not invent values or relationships for existing rows.
 
 ## API behavior
 

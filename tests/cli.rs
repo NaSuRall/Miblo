@@ -110,6 +110,207 @@ fn tree(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     files
 }
 
+fn editable_project(dir: &Path) -> PathBuf {
+    let template = pack(dir);
+    fs::write(template.join("manifest.json"), r#"{"schema_version":1,"id":"rust-axum-sqlite","version":"0.3.0","features":["relations"]}"#).unwrap();
+    fs::write(
+        template.join("resource/mod.rs.hbs"),
+        "pub mod model;\npub mod handlers;\n",
+    )
+    .unwrap();
+    fs::write(template.join("resource/model.rs.hbs"), "pub struct {{name}} {pub id:i64,{{#each fields}}pub {{name}}:{{#if nullable}}Option<{{rust_type}}>{{else}}{{rust_type}}{{/if}},{{/each}}\n}\n").unwrap();
+    fs::write(
+        template.join("resource/handlers.rs.hbs"),
+        "pub fn columns() -> Vec<&'static str> { vec![{{#each fields}}\"{{name}}\",{{/each}}] }\n",
+    )
+    .unwrap();
+    fs::write(template.join("resource/migration.sql.hbs"), "CREATE TABLE `{{table}}` (`id` INTEGER PRIMARY KEY,{{#each fields}}`{{name}}` {{sql_type}}{{#unless nullable}} NOT NULL{{/unless}}{{#unless @last}},{{/unless}}{{/each}});\n").unwrap();
+    success(cli(
+        &[
+            "new",
+            "sample",
+            "--database",
+            "sqlite",
+            "--template-dir",
+            template.to_str().unwrap(),
+            "--resource",
+            "User",
+            "--field",
+            "name:string",
+            "--yes",
+        ],
+        dir,
+    ));
+    let root = dir.join("sample");
+    fs::write(root.join(".env"), "DATABASE_URL=sqlite://data.sqlite\n").unwrap();
+    root
+}
+
+#[test]
+fn edit_preserves_history_custom_code_and_legacy_projects() {
+    let dir = TempDir::new().unwrap();
+    let root = editable_project(dir.path());
+    // Exercise the upgrade path for projects created before generation baselines.
+    let path = root.join(".miblo/state.json");
+    let mut state: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    state.as_object_mut().unwrap().remove("generated");
+    fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
+    let model = root.join("src/resources/user/model.rs");
+    let mut source = fs::read_to_string(&model).unwrap();
+    source.push_str("\n// business logic\nimpl User {pub fn label(&self)->&str { &self.name }}\n");
+    fs::write(&model, &source).unwrap();
+    let before = tree(&root);
+    success(cli(
+        &["edit", "User", "nickname:string?:unique", "--dry-run"],
+        &root,
+    ));
+    assert_eq!(tree(&root), before, "dry run must not write any files");
+    success(cli(
+        &[
+            "edit",
+            "User",
+            "nickname:string?:unique",
+            "--yes",
+            "--offline",
+        ],
+        &root,
+    ));
+    assert!(
+        fs::read_to_string(&model)
+            .unwrap()
+            .contains("business logic")
+    );
+    assert!(
+        fs::read_to_string(&model)
+            .unwrap()
+            .contains("nickname: Option<String>")
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(".miblo/backups/000002/src/resources/user/model.rs")).unwrap(),
+        source
+    );
+    for (path, bytes) in before
+        .iter()
+        .filter(|(path, _)| path.parent() == Some(root.join("migrations").as_path()))
+    {
+        assert_eq!(fs::read(path).unwrap(), *bytes);
+    }
+    success(cli(&["add", "Group", "name:string", "--yes"], &root));
+    success(cli(
+        &[
+            "edit",
+            "User",
+            "group_id:int?:ref=Group:on_delete=set_null",
+            "--yes",
+        ],
+        &root,
+    ));
+    let sql = fs::read_to_string(root.join("migrations/000004_alter_users.sql")).unwrap();
+    assert!(sql.contains("REFERENCES `groups` (`id`) ON DELETE SET NULL"));
+    assert!(!sql.contains("DROP") && !sql.contains("CREATE TABLE"));
+    success(cli(&["db", "init"], &root));
+    success(cli(&["db", "migrate"], &root));
+    success(cli(&["doctor"], &root));
+    assert!(
+        fs::read_to_string(&model)
+            .unwrap()
+            .contains("business logic")
+    );
+}
+
+#[test]
+fn invalid_edits_and_merge_conflicts_write_nothing() {
+    let dir = TempDir::new().unwrap();
+    let root = editable_project(dir.path());
+    for (arguments, error) in [
+        (
+            vec!["edit", "User", "nickname:string", "--yes"],
+            "must be optional",
+        ),
+        (
+            vec!["edit", "User", "name:string?", "--yes"],
+            "Duplicate field",
+        ),
+        (
+            vec!["edit", "User", "group_id:int?:ref=Missing", "--yes"],
+            "create that model first",
+        ),
+        (vec!["edit", "User", "--yes"], "at least one"),
+        (
+            vec!["edit", "Missing", "note:string?", "--yes"],
+            "Unknown model",
+        ),
+    ] {
+        let before = tree(&root);
+        failure(cli(&arguments, &root), error);
+        assert_eq!(tree(&root), before);
+    }
+    fs::write(
+        root.join("src/resources/user/model.rs"),
+        "// Handwritten replacement\npub fn custom() {}\n",
+    )
+    .unwrap();
+    let before = tree(&root);
+    failure(
+        cli(&["edit", "User", "nickname:string?", "--yes"], &root),
+        "Cannot safely update",
+    );
+    assert_eq!(tree(&root), before, "conflict must leave all files intact");
+}
+
+#[test]
+fn failed_sqlite_alteration_rolls_back_columns_and_keeps_rows() {
+    use sqlx::Connection;
+    let dir = TempDir::new().unwrap();
+    let root = editable_project(dir.path());
+    success(cli(&["db", "init"], &root));
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(root.join("data.sqlite"));
+    runtime.block_on(async {
+        let mut connection = sqlx::SqliteConnection::connect_with(&options).await.unwrap();
+        sqlx::raw_sql("INSERT INTO users(id,name) VALUES (42,'kept'); ALTER TABLE users ADD COLUMN manual TEXT; UPDATE users SET manual='custom';")
+            .execute(&mut connection).await.unwrap();
+        connection.close().await.unwrap();
+    });
+    success(cli(
+        &[
+            "edit",
+            "User",
+            "nickname:string?",
+            "manual:string?",
+            "--yes",
+        ],
+        &root,
+    ));
+    failure(cli(&["db", "migrate"], &root), "duplicate column name");
+    runtime.block_on(async {
+        let mut connection = sqlx::SqliteConnection::connect_with(&options)
+            .await
+            .unwrap();
+        let row: (i64, String, String) = sqlx::query_as("SELECT id,name,manual FROM users")
+            .fetch_one(&mut connection)
+            .await
+            .unwrap();
+        assert_eq!(row, (42, "kept".into(), "custom".into()));
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pragma_table_info('users') WHERE name='nickname'",
+        )
+        .fetch_one(&mut connection)
+        .await
+        .unwrap();
+        assert_eq!(
+            count, 0,
+            "The first ADD COLUMN must roll back when the second fails"
+        );
+        let versions: i64 = sqlx::query_scalar("SELECT count(*) FROM _sqlx_migrations")
+            .fetch_one(&mut connection)
+            .await
+            .unwrap();
+        assert_eq!(versions, 1);
+        connection.close().await.unwrap();
+    });
+}
+
 #[test]
 fn help_and_errors_use_the_miblo_binary() {
     let dir = TempDir::new().unwrap();

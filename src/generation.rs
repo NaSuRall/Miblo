@@ -16,6 +16,9 @@ const REGISTRY: &str = "src/resources/mod.rs";
 const CONFIG: &str = "miblo.yaml";
 const STATE: &str = ".miblo/state.json";
 
+mod edit;
+pub use edit::{alteration_sql, edit};
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
@@ -24,6 +27,9 @@ pub struct State {
     pub config_sha256: String,
     pub registry_sha256: String,
     pub next_migration: u64,
+    /// Last generated resource sources, used as the ancestor for three-way merges.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub generated: BTreeMap<String, String>,
 }
 
 type Files = BTreeMap<String, String>;
@@ -74,7 +80,19 @@ fn resource_files(
     Ok(())
 }
 
-fn metadata(pack: &Pack, project: &Project, next: u64, files: &mut Files) -> Result<()> {
+fn metadata(
+    pack: &Pack,
+    project: &Project,
+    next: u64,
+    mut generated: Files,
+    files: &mut Files,
+) -> Result<()> {
+    for (name, source) in files
+        .iter()
+        .filter(|(name, _)| name.starts_with("src/resources/") && name.as_str() != REGISTRY)
+    {
+        generated.insert(name.clone(), source.clone());
+    }
     let config = serde_yaml::to_string(project)?;
     let registry = pack.render("registry.rs.hbs", &project_data(project))?;
     let state = State {
@@ -83,6 +101,7 @@ fn metadata(pack: &Pack, project: &Project, next: u64, files: &mut Files) -> Res
         config_sha256: digest(config.as_bytes()),
         registry_sha256: registry_digest(registry.as_bytes()),
         next_migration: next,
+        generated,
     };
     files.insert(CONFIG.into(), config);
     files.insert(REGISTRY.into(), registry);
@@ -92,6 +111,19 @@ fn metadata(pack: &Pack, project: &Project, next: u64, files: &mut Files) -> Res
 
 pub fn create(project: &Project, pack: &Pack, destination: &Path, dry_run: bool) -> Result<()> {
     project.validate()?;
+    // Creation needs dependency order. Later edits may link any existing table.
+    for (index, resource) in project.resources.iter().enumerate() {
+        for reference in resource.fields.iter().filter_map(|f| f.references.as_ref()) {
+            ensure!(
+                project.resources[..=index]
+                    .iter()
+                    .any(|r| r.name == reference.resource),
+                "{} references {}: create that model first",
+                resource.name,
+                reference.resource
+            );
+        }
+    }
     ensure!(
         pack.id == project.stack,
         "Template stack {} does not match {}",
@@ -134,6 +166,7 @@ pub fn create(project: &Project, pack: &Pack, destination: &Path, dry_run: bool)
         pack,
         project,
         project.resources.len() as u64 + 1,
+        Files::new(),
         &mut files,
     )?;
     if dry_run {
@@ -187,10 +220,14 @@ pub fn inspect(root: &Path) -> Result<(Project, State)> {
     ensure!(state.next_migration > 0, "Invalid migration counter");
     ensure!(
         digest(serde_yaml::to_string(&project)?.as_bytes()) == state.config_sha256,
-        "miblo.yaml was modified outside Miblo. Restore its previous resource definitions before adding a resource; existing schema edits are not yet supported"
+        "miblo.yaml was modified outside Miblo. Restore its previous definitions, then use miblo edit or the model editor to generate a migration; nothing was changed"
     );
     ensure!(
-        registry_digest(&fs::read(root.join(REGISTRY))?) == state.registry_sha256,
+        registry_matches(
+            &fs::read(root.join(REGISTRY))?,
+            &project,
+            &state.registry_sha256
+        ),
         "src/resources/mod.rs was customized. Move custom route registration to src/lib.rs and restore the generated registry before adding a resource; nothing was changed"
     );
     Ok((project, state))
@@ -233,6 +270,7 @@ pub fn add(
         &pack,
         &project,
         next.checked_add(1).context("Migration counter overflow")?,
+        state.generated,
         &mut files,
     )?;
     let mut originals = BTreeMap::new();
@@ -471,4 +509,80 @@ fn registry_digest(bytes: &[u8]) -> String {
             .filter(|b| !b.is_ascii_whitespace())
             .collect::<Vec<_>>(),
     )
+}
+
+fn registry_matches(bytes: &[u8], project: &Project, expected: &str) -> bool {
+    if registry_digest(bytes) == expected {
+        return true;
+    }
+    // rustfmt sorts a contiguous block of `pub mod` declarations. Restore only
+    // their original order before comparing the *entire* registry to its pin.
+    // Route order, comments, imports and all other tokens remain protected.
+    let compact: String = String::from_utf8_lossy(bytes)
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace())
+        .collect();
+    let Some(start) = compact.find("pubmod") else {
+        return false;
+    };
+    let mut end = start;
+    let mut modules = Vec::new();
+    while let Some(rest) = compact[end..].strip_prefix("pubmod") {
+        let Some((module, _)) = rest.split_once(';') else {
+            return false;
+        };
+        if module.is_empty()
+            || !module
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            return false;
+        }
+        modules.push(module.to_owned());
+        end += "pubmod".len() + module.len() + 1;
+    }
+    let original: Vec<_> = project.resources.iter().map(Resource::module).collect();
+    let mut sorted = original.clone();
+    sorted.sort();
+    modules.sort();
+    if modules != sorted {
+        return false;
+    }
+    let ordered = original
+        .iter()
+        .map(|m| format!("pubmod{m};"))
+        .collect::<String>();
+    digest(format!("{}{ordered}{}", &compact[..start], &compact[end..]).as_bytes()) == expected
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+    #[test]
+    fn accepts_only_module_reordering_even_for_legacy_pins() {
+        let project = Project::new(
+            "sample".into(),
+            3000,
+            vec![
+                Resource::new("User".into(), vec![]),
+                Resource::new("Group".into(), vec![]),
+            ],
+        );
+        let source = "pub mod user;\npub mod group;\nfn routes() { user(); group(); }\n";
+        let formatted = "pub mod group;\npub mod user;\nfn routes() { user(); group(); }\n";
+        let pin = registry_digest(source.as_bytes());
+        assert!(registry_matches(formatted.as_bytes(), &project, &pin));
+        assert!(!registry_matches(
+            formatted
+                .replace("user(); group();", "group(); user();")
+                .as_bytes(),
+            &project,
+            &pin
+        ));
+        assert!(!registry_matches(
+            format!("// custom\n{formatted}").as_bytes(),
+            &project,
+            &pin
+        ));
+    }
 }

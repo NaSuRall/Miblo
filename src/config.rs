@@ -222,15 +222,12 @@ impl Project {
                 resource.table()
             );
         }
-        // New tables may reference themselves or previously defined models. This
-        // makes every migration executable in order on SQLite and MySQL alike.
-        for (index, resource) in self.resources.iter().enumerate() {
+        // Edits can reference tables created after this resource's first migration.
+        for resource in &self.resources {
             for field in &resource.fields {
                 if let Some(reference) = &field.references {
                     ensure!(
-                        self.resources[..=index]
-                            .iter()
-                            .any(|r| r.name == reference.resource),
+                        self.resources.iter().any(|r| r.name == reference.resource),
                         "{}.{} references {}: create that model first",
                         resource.name,
                         field.name,
@@ -486,7 +483,7 @@ pub fn parse_field(value: &str) -> Result<Field> {
 mod tests {
     use super::*;
     #[test]
-    fn relations_validate_targets_order_types_and_actions() {
+    fn relations_validate_targets_types_and_actions() {
         let group = Resource::new("Group".into(), vec![parse_field("name:string").unwrap()]);
         let field = parse_field("group_id:int?:unique:ref=Group:on_delete=set_null").unwrap();
         assert_eq!(
@@ -500,7 +497,7 @@ mod tests {
         assert!(
             Project::new("example".into(), 3000, vec![member.clone(), group.clone()])
                 .validate()
-                .is_err()
+                .is_ok()
         );
         for field in [
             "group_id:string:ref=Group",

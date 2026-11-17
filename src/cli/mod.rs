@@ -30,6 +30,8 @@ enum Command {
     },
     /// Add a resource without rewriting existing resource files.
     Add(AddArgs),
+    /// Add optional fields or relations to an existing model, preserving data and custom code.
+    Edit(EditArgs),
     /// Run the API; compilation and runtime errors remain visible.
     Run {
         #[arg(long, alias = "name", default_value = ".")]
@@ -146,6 +148,25 @@ struct AddArgs {
     legacy: Option<AddCommand>,
 }
 
+#[derive(Args)]
+struct EditArgs {
+    name: String,
+    /// New optional fields, for example nickname:string? group_id:int?:ref=Group.
+    #[arg(value_name = "FIELD", conflicts_with = "fields")]
+    positional_fields: Vec<String>,
+    #[arg(long = "field", value_name = "FIELD")]
+    fields: Vec<String>,
+    #[arg(long, default_value = ".")]
+    project: PathBuf,
+    #[arg(short, long)]
+    yes: bool,
+    /// Preview SQL and affected files without changing the project or database.
+    #[arg(long)]
+    dry_run: bool,
+    #[command(flatten)]
+    cache: CacheArgs,
+}
+
 #[derive(Subcommand)]
 enum AddCommand {
     /// Compatibility with miblo add resource <NAME>.
@@ -190,6 +211,40 @@ fn execute(command: Command) -> Result<()> {
     match command {
         Command::New(args) => new(args),
         Command::Ui { project } => crate::tui::run(project),
+        Command::Edit(args) => {
+            let fields = if args.positional_fields.is_empty() {
+                args.fields
+            } else {
+                args.positional_fields
+            };
+            let fields = fields
+                .iter()
+                .map(|f| parse_field(f))
+                .collect::<Result<Vec<_>>>()?;
+            // Build a reviewable plan before asking for confirmation.
+            if !args.yes && !args.dry_run {
+                generation::edit(
+                    &args.project,
+                    &args.name,
+                    fields.clone(),
+                    args.cache.offline,
+                    &args.cache.path(),
+                    true,
+                )?;
+                wizard::confirm(&format!(
+                    "Ajouter ces champs à {} ? La base sera migrée séparément.",
+                    args.name
+                ))?;
+            }
+            generation::edit(
+                &args.project,
+                &args.name,
+                fields,
+                args.cache.offline,
+                &args.cache.path(),
+                args.dry_run,
+            )
+        }
         Command::Add(args) => add(match args.legacy {
             Some(AddCommand::Resource(resource)) => resource,
             None => args.resource,

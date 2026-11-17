@@ -219,7 +219,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_stateful_widget(
         List::new(resources)
             .block(panel(
-                " Modèles / tables ",
+                " Modèles · m modifier ",
                 app.focus == Focus::Resources,
                 colors,
             ))
@@ -420,7 +420,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         ),
         layout[4],
     );
-    if let Some(dialog) = &app.dialog {
+    if let Some(dialog) = &mut app.dialog {
         draw_dialog(frame, dialog, colors);
     }
 }
@@ -527,13 +527,47 @@ fn centered(area: Rect, width: u16, height: u16) -> Rect {
         height,
     )
 }
-fn draw_dialog(frame: &mut Frame, dialog: &forms::Dialog, colors: Palette) {
+fn description_lines(description: &[String], width: u16) -> Vec<String> {
+    let mut lines = Vec::new();
+    for source in description {
+        let mut line = String::new();
+        let mut length = 0;
+        for word in source.split_whitespace() {
+            let word_width = Span::raw(word).width();
+            if !line.is_empty() && length + 1 + word_width > usize::from(width) {
+                lines.push(std::mem::take(&mut line));
+                length = 0;
+            }
+            if !line.is_empty() {
+                line.push(' ');
+                length += 1;
+            }
+            for c in word.chars() {
+                let size = Span::raw(c.to_string()).width();
+                if length + size > usize::from(width) && !line.is_empty() {
+                    lines.push(std::mem::take(&mut line));
+                    length = 0;
+                }
+                line.push(c);
+                length += size;
+            }
+        }
+        lines.push(line);
+    }
+    lines
+}
+
+fn draw_dialog(frame: &mut Frame, dialog: &mut forms::Dialog, colors: Palette) {
     use forms::Dialog;
     let height = match dialog {
         Dialog::Input { .. } => 7,
         Dialog::Select {
             description, items, ..
-        } => (description.len() + items.len() + 5) as u16,
+        } => {
+            (description_lines(description, 76.min(frame.area().width.saturating_sub(6))).len()
+                + items.len()
+                + 5) as u16
+        }
         Dialog::Options { items, .. } => items.len() as u16 + 5,
         Dialog::Help => 24,
     };
@@ -577,12 +611,15 @@ fn draw_dialog(frame: &mut Frame, dialog: &forms::Dialog, colors: Palette) {
             description,
             items,
             selected,
+            scroll,
             ..
         } => {
             let block = panel(format!(" {title} "), true, colors);
             let inner = block.inner(area);
             frame.render_widget(block, area);
-            let description_height = (description.len() as u16).min(inner.height.saturating_sub(3));
+            let lines = description_lines(description, inner.width);
+            let description_height = (lines.len() as u16).min(inner.height.saturating_sub(4));
+            *scroll = (*scroll).min((lines.len() as u16).saturating_sub(description_height));
             let rows = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -592,7 +629,9 @@ fn draw_dialog(frame: &mut Frame, dialog: &forms::Dialog, colors: Palette) {
                 ])
                 .split(inner);
             frame.render_widget(
-                Paragraph::new(description.join("\n")).style(Style::default().fg(colors.muted)),
+                Paragraph::new(lines.join("\n"))
+                    .scroll((*scroll, 0))
+                    .style(Style::default().fg(colors.muted)),
                 rows[0],
             );
             let mut state = ListState::default().with_selected(Some(*selected));
@@ -610,7 +649,7 @@ fn draw_dialog(frame: &mut Frame, dialog: &forms::Dialog, colors: Palette) {
                 &mut state,
             );
             frame.render_widget(
-                Paragraph::new("↑ ↓ ou j/k • Entrée : valider • Échap : annuler")
+                Paragraph::new("↑ ↓ choisir • Entrée valider • Échap annuler • Pg↑/↓ détails")
                     .style(Style::default().fg(colors.muted)),
                 rows[2],
             );
@@ -645,7 +684,7 @@ fn draw_dialog(frame: &mut Frame, dialog: &forms::Dialog, colors: Palette) {
             );
         }
         Dialog::Help => {
-            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  x tester la route • f requête HTTP libre • v masquer le code\n  d schéma BDD • p réel/déclaré • u mettre à jour les templates\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, run, stop, check, test\n  db, migrate, schema, templates, routes, request, code, edit, refresh\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
+            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter • m modifier un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  x tester la route • f requête HTTP libre • v masquer le code\n  d schéma BDD • p réel/déclaré • u mettre à jour les templates\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, model, run, stop, check, test\n  db, migrate, schema, templates, routes, request, code, edit, refresh\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
                 .style(Style::default().fg(colors.foreground)).block(panel(" Aide Miblo ", true, colors)).wrap(Wrap { trim: false }), area);
         }
     }

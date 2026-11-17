@@ -2,6 +2,7 @@
 """Test the real generated API against an isolated MySQL server. No existing DB is used."""
 import argparse
 import relation_checks
+import evolution_checks
 import json
 import os
 from pathlib import Path
@@ -131,6 +132,20 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
         request('GET', '/products/99999', expected=404)
         request('PATCH', '/products/99999', {'title': 'missing'}, 404)
         request('POST', '/categories', {'label': 'second resource'}, 201)
+        stop(api)
+        evolution_checks.generate(miblo, project, generation_env, 'Product')
+        cli('db', 'migrate')
+        cli('db', 'migrate')
+        subprocess.run(['cargo', 'build', '--locked', '--offline', *cargo_args], cwd=project, check=True, timeout=300)
+        with api_log.open('a') as log:
+            api = subprocess.Popen([str(target / 'debug/smoke-api')], cwd=project, env=env, stdout=log, stderr=log)
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if api.poll() is not None: raise RuntimeError('Evolved API exited')
+            try: request('GET', '/health'); break
+            except (OSError, urllib.error.URLError): time.sleep(.1)
+        else: raise RuntimeError('Evolved API did not start')
+        evolution_checks.requests(request, '/products', resource, dict(value, description=None, quantity=0, active=False))
         request('DELETE', resource, expected=204)
         request('DELETE', resource, expected=404)
         request('GET', resource, expected=404)

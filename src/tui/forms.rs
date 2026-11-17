@@ -33,6 +33,9 @@ pub(super) enum ChoiceKind {
     NewConfirm,
     NewRetry,
     AddConfirm,
+    EditModel,
+    EditAction,
+    EditConfirm,
     Database,
     DbMenu,
     DbConfirm(Action),
@@ -57,6 +60,7 @@ pub(super) enum Dialog {
         description: Vec<String>,
         items: Vec<String>,
         selected: usize,
+        scroll: u16,
     },
     Options {
         items: Vec<(String, bool)>,
@@ -82,6 +86,7 @@ pub(super) struct AddDraft {
     path: String,
     fields: Vec<Field>,
     pending: Option<Field>,
+    editing: bool,
 }
 #[derive(Default)]
 pub(super) struct TemplateDraft {
@@ -175,6 +180,7 @@ impl App {
             description,
             items: items.iter().map(|v| (*v).into()).collect(),
             selected,
+            scroll: 0,
         });
     }
     pub(super) fn palette(&mut self) {
@@ -201,6 +207,7 @@ impl App {
                 "Afficher / masquer l’aperçu du code",
                 "Voir le schéma de la base de données",
                 "Mettre à jour les templates des futurs modèles",
+                "Modifier un modèle existant : champs / relations",
             ],
             Vec::new(),
             0,
@@ -274,6 +281,74 @@ impl App {
         Ok(())
     }
 
+    pub(super) fn start_model_edit(&mut self) -> Result<()> {
+        ensure!(
+            self.api.is_none(),
+            "Arrête l’API avec s avant de modifier un modèle"
+        );
+        let (project, _) = generation::inspect(self.ready_for_job()?)?;
+        ensure!(
+            !project.resources.is_empty(),
+            "Ajoute d’abord un modèle avec a"
+        );
+        let names: Vec<_> = project.resources.iter().map(|r| r.name.as_str()).collect();
+        self.choose(
+            ChoiceKind::EditModel,
+            "Modifier un modèle existant",
+            &names,
+            vec!["Ajout de champs / relations facultatifs, sans supprimer les données.".into()],
+            self.resource_selected.min(names.len() - 1),
+        );
+        self.project = Some(project);
+        Ok(())
+    }
+
+    fn existing_fields(&self) -> Vec<Field> {
+        if !self.add_draft.editing {
+            return vec![];
+        }
+        self.project
+            .as_ref()
+            .and_then(|p| p.resources.iter().find(|r| r.name == self.add_draft.name))
+            .map_or(vec![], |r| r.fields.clone())
+    }
+
+    fn validate_draft_fields(&self, added: &[Field]) -> Result<()> {
+        let mut fields = self.existing_fields();
+        fields.extend_from_slice(added);
+        Resource::new(self.add_draft.name.clone(), fields).validate()
+    }
+
+    fn confirm_model_edit(&mut self) -> Result<()> {
+        let project = self.project.as_ref().context("Aucun projet")?;
+        let resource = self.draft_resource(&self.add_draft.path);
+        self.validate_draft_fields(&resource.fields)?;
+        let sql = generation::alteration_sql(&resource, &resource.fields, project.database())?;
+        let mut description = vec![
+            format!(
+                "{} · {} nouveau(x) champ(s)",
+                resource.name,
+                resource.fields.len()
+            ),
+            "Lignes conservées ; les nouveaux champs contiendront NULL.".into(),
+            "Fusion du code personnalisé et sauvegarde des fichiers remplacés.".into(),
+            "Une migration sera créée. Applique-la ensuite avec b → migrations.".into(),
+        ];
+        description.extend(
+            sql.lines()
+                .filter(|l| !l.starts_with("--"))
+                .map(str::to_owned),
+        );
+        self.choose(
+            ChoiceKind::EditConfirm,
+            "Générer la modification du modèle ?",
+            &["Générer la migration et le code", "Annuler"],
+            description,
+            0,
+        );
+        Ok(())
+    }
+
     pub(super) fn dialog_key(&mut self, key: KeyEvent) -> Result<()> {
         let Some(mut dialog) = self.dialog.take() else {
             return Ok(());
@@ -332,8 +407,19 @@ impl App {
                 kind,
                 selected,
                 items,
+                scroll,
                 ..
             } => match key.code {
+                KeyCode::PageDown => {
+                    *scroll = scroll.saturating_add(5);
+                    self.dialog = Some(dialog);
+                    Ok(())
+                }
+                KeyCode::PageUp => {
+                    *scroll = scroll.saturating_sub(5);
+                    self.dialog = Some(dialog);
+                    Ok(())
+                }
                 KeyCode::Enter => self.submit_choice(*kind, *selected),
                 KeyCode::Down | KeyCode::Char('j') => {
                     *selected = (*selected + 1) % items.len();
@@ -358,7 +444,9 @@ impl App {
             } => match key.code {
                 KeyCode::Enter => self.submit_options(items, *unique_available, *private_available),
                 KeyCode::Char(' ') => {
-                    items[*selected].1 = !items[*selected].1;
+                    if !(self.add_draft.editing && *selected == 0) {
+                        items[*selected].1 = !items[*selected].1;
+                    }
                     self.dialog = Some(dialog);
                     Ok(())
                 }
@@ -480,7 +568,7 @@ impl App {
                 let field = parse_field(&format!("{value}:string"))?;
                 let mut fields = self.add_draft.fields.clone();
                 fields.push(field.clone());
-                Resource::new(self.add_draft.name.clone(), fields).validate()?;
+                self.validate_draft_fields(&fields)?;
                 self.add_draft.pending = Some(field);
                 self.choose(
                     ChoiceKind::FieldType,
@@ -559,7 +647,7 @@ impl App {
                 field.name = value.into();
                 let mut fields = self.add_draft.fields.clone();
                 fields.push(field.clone());
-                Resource::new(self.add_draft.name.clone(), fields).validate()?;
+                self.validate_draft_fields(&fields)?;
                 self.add_draft.pending = Some(field);
                 self.field_options()?;
             }
@@ -697,8 +785,52 @@ impl App {
                     "code",
                     "schema",
                     "templates",
+                    "model",
                 ][selected],
             )?,
+            ChoiceKind::EditModel => {
+                let resource = self
+                    .project
+                    .as_ref()
+                    .and_then(|p| p.resources.get(selected))
+                    .context("Modèle manquant")?
+                    .clone();
+                self.add_draft = AddDraft {
+                    name: resource.name.clone(),
+                    path: resource.path.clone(),
+                    editing: true,
+                    ..Default::default()
+                };
+                let mut description = vec![format!(
+                    "{} → {} · id : clé primaire",
+                    resource.name,
+                    resource.table()
+                )];
+                description.extend(resource.fields.iter().map(Field::argument));
+                self.choose(
+                    ChoiceKind::EditAction,
+                    "Modifier le modèle — champs existants",
+                    &[
+                        "Ajouter un champ facultatif",
+                        "Ajouter une relation facultative",
+                        "Annuler",
+                    ],
+                    description,
+                    0,
+                );
+            }
+            ChoiceKind::EditAction => match selected {
+                0 => self.input(InputKind::FieldName, "Nom du nouveau champ facultatif", ""),
+                1 => self.choose_relation_target()?,
+                _ => self.notice = "Modification annulée".into(),
+            },
+            ChoiceKind::EditConfirm => {
+                if selected == 0 {
+                    self.generate_resource()?;
+                } else {
+                    self.notice = "Modification annulée".into();
+                }
+            }
             ChoiceKind::HttpMethod => {
                 self.request_draft.method =
                     ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD"][selected].into();
@@ -850,6 +982,7 @@ impl App {
             }
             ChoiceKind::NextField => match selected {
                 0 => self.input(InputKind::FieldName, "Nom du champ", ""),
+                1 if self.add_draft.editing => self.confirm_model_edit()?,
                 1 => self.input(
                     InputKind::Collection,
                     "Adresse de la collection",
@@ -910,7 +1043,7 @@ impl App {
         private_available: bool,
     ) -> Result<()> {
         let mut field = self.add_draft.pending.clone().context("Champ manquant")?;
-        field.nullable = items[0].1;
+        field.nullable = self.add_draft.editing || items[0].1;
         let mut index = 1;
         if unique_available {
             field.unique = items[index].1;
@@ -945,7 +1078,7 @@ impl App {
     fn store_field(&mut self, field: Field) -> Result<()> {
         let mut fields = self.add_draft.fields.clone();
         fields.push(field);
-        Resource::new(self.add_draft.name.clone(), fields.clone()).validate()?;
+        self.validate_draft_fields(&fields)?;
         self.add_draft.fields = fields;
         self.add_draft.pending = None;
         self.choose(
@@ -966,7 +1099,15 @@ impl App {
         let field = self.add_draft.pending.as_ref().context("Champ manquant")?;
         let unique_available = field.kind != FieldType::Text;
         let private_available = !field.private;
-        let mut items = vec![("Facultatif — autoriser null".into(), false)];
+        let mut items = vec![(
+            if self.add_draft.editing {
+                "Facultatif — anciennes lignes à NULL (fixé)"
+            } else {
+                "Facultatif — autoriser null"
+            }
+            .into(),
+            self.add_draft.editing,
+        )];
         if unique_available {
             items.push((
                 if field.references.is_some() {
@@ -996,7 +1137,9 @@ impl App {
             .project
             .as_ref()
             .map_or(vec![], |p| p.resources.clone());
-        models.push(Resource::new(self.add_draft.name.clone(), vec![]));
+        if !self.add_draft.editing {
+            models.push(Resource::new(self.add_draft.name.clone(), vec![]));
+        }
         models
     }
     fn choose_relation_target(&mut self) -> Result<()> {
@@ -1118,20 +1261,40 @@ impl App {
     fn generate_resource(&mut self) -> Result<()> {
         let root = self.ready_for_job()?.as_os_str().to_owned();
         let mut args: Vec<OsString> = vec![
-            "add".into(),
+            if self.add_draft.editing {
+                "edit"
+            } else {
+                "add"
+            }
+            .into(),
             self.add_draft.name.clone().into(),
             "--project".into(),
             root,
-            "--path".into(),
-            self.add_draft.path.clone().into(),
             "--yes".into(),
         ];
+        if !self.add_draft.editing {
+            args.extend(["--path".into(), self.add_draft.path.clone().into()]);
+        } else {
+            ensure!(
+                self.api.is_none(),
+                "Arrête l’API avant de modifier un modèle"
+            );
+        }
         for field in &self.add_draft.fields {
             args.push("--field".into());
             args.push(field.argument().into());
         }
-        self.cli_job(args, "Ajout de ressource", None, false)?;
-        self.migrate_after_add = true;
+        self.cli_job(
+            args,
+            if self.add_draft.editing {
+                "Modification du modèle"
+            } else {
+                "Ajout de ressource"
+            },
+            None,
+            false,
+        )?;
+        self.migrate_after_add = !self.add_draft.editing;
         Ok(())
     }
 

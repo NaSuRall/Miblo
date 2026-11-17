@@ -21,6 +21,7 @@ import tempfile
 import termios
 import time
 import threading
+import urllib.request
 import pyte
 
 parser = argparse.ArgumentParser()
@@ -29,6 +30,7 @@ parser.add_argument('--templates', type=Path, required=True)
 parser.add_argument('--database', choices=['sqlite', 'mysql'], default='sqlite')
 parser.add_argument('--capture-json', type=Path)
 parser.add_argument('--schema-capture-json', type=Path)
+parser.add_argument('--edit-capture-json', type=Path)
 parser.add_argument('--api-target-dir', type=Path, help='Build and test real SQLite CRUD routes in the TUI')
 args = parser.parse_args()
 
@@ -273,7 +275,46 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
             with sqlite3.connect(project / 'miblo.sqlite') as connection:
                 assert connection.execute("SELECT name FROM sqlite_master WHERE name='extra'").fetchone()
 
+            # Edit a populated model through arrows, with a relation to a later model.
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                old_id = connection.execute('INSERT INTO products(title,quantity) VALUES (?,?)', ('before-edit', 9)).lastrowid
+                stock_id = connection.execute('INSERT INTO stocks(location,product_id) VALUES (?,?)', ('preserved-stock', old_id)).lastrowid
+            handler = project / 'src/resources/product/handlers.rs'
+            handler.write_text(handler.read_text() + '\n// custom logic preserved by UI editing\n')
+            migrations = {p: p.read_bytes() for p in (project / 'migrations').glob('*.sql')}
+            ui.send('m'); ui.wait('Modifier un modèle existant'); ui.send('\r'); ui.wait('champs existants')
+            ui.wait('title:string:unique'); ui.send('\x1b'); ui.wait_absent('champs existants')
+            assert {p: p.read_bytes() for p in (project / 'migrations').glob('*.sql')} == migrations
+            ui.send('m'); ui.wait('Modifier un modèle existant'); ui.send('\r'); ui.wait('champs existants')
+            ui.send('\r'); ui.wait('Nom du nouveau champ'); ui.send('alias\r'); ui.wait('Type du champ')
+            ui.send('\r'); ui.wait('Options du champ'); ui.wait('anciennes lignes à NULL')
+            ui.send(' '); ui.pump(.1); ui.wait('[×] Facultatif')
+            ui.send('\x1b[B \r'); ui.wait('Champs de la ressource')
+            ui.send('\x1b[B\x1b[B\x1b[B\r'); ui.wait('Modèle / table à référencer')
+            ui.send('\x1b[B\r'); ui.wait('Nom de la clé étrangère'); ui.wait('stock_id')
+            ui.send('\r'); ui.wait('Options du champ'); ui.send('\r'); ui.wait('Si la ligne référencée')
+            ui.send('\x1b[B\x1b[B\r'); ui.wait('Champs de la ressource')
+            ui.send('\x1b[B\r'); ui.wait('Générer la modification du modèle'); ui.wait('ALTER TABLE')
+            if args.edit_capture_json: ui.capture(args.edit_capture_json)
+            ui.send('\r'); ui.wait('Modification du modèle : exit status: 0'); ui.wait('Aucune action en cours')
+            ui.wait('Mise à jour BDD requise')
+            assert 'custom logic preserved by UI editing' in handler.read_text()
+            for path, content in migrations.items(): assert path.read_bytes() == content
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert 'alias' not in [r[1] for r in connection.execute('PRAGMA table_info(products)')]
+            ui.send('b'); ui.wait('Appliquer les migrations'); ui.send('\x1b[B\r'); ui.wait('Confirmer')
+            ui.send('\r'); ui.wait('Migrations à jour'); ui.wait('Aucune action en cours')
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert connection.execute('SELECT title,quantity,alias,stock_id FROM products WHERE id=?', (old_id,)).fetchone() == ('before-edit', 9, None, None)
+                assert connection.execute('SELECT product_id FROM stocks WHERE id=?', (stock_id,)).fetchone()[0] == old_id
+            ui.send('d'); ui.wait('Schéma réel'); ui.wait('TABLE extra'); ui.send('j'); ui.wait('TABLE products'); ui.wait('stock_id → stocks.id')
+            ui.send('d'); ui.wait('Réponse HTTP')
+
         ui.send('r'); ui.wait('API en cours' if args.api_target_dir else 'API ne répond pas', timeout=120)
+        if args.api_target_dir:
+            with urllib.request.urlopen(f'http://127.0.0.1:{api_port}/products/{old_id}') as response:
+                row = json.load(response)
+            assert row['title'] == 'before-edit' and row['alias'] is None and row['stock_id'] is None
         second_pid = int((root / 'api-child.pid').read_text())
         assert second_pid != first_pid
         ui.send('q')

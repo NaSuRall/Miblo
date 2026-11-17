@@ -2,6 +2,7 @@
 """Generate and run a real SQLite API, including empty-project startup and CRUD."""
 import argparse
 import relation_checks
+import evolution_checks
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
@@ -121,6 +122,30 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         stop(api)
         api = start()
         assert request('GET', path)['email'] == value['email'], 'SQLite data must persist across restarts'
+        stop(api)
+        with sqlite3.connect(project / 'miblo.sqlite') as connection:
+            connection.execute('PRAGMA foreign_keys=ON')
+            connection.execute('ALTER TABLE users ADD COLUMN manual_column TEXT')
+            connection.execute('UPDATE users SET manual_column = ?', ('preserved',))
+            connection.execute('CREATE INDEX manual_index ON users(name)')
+            connection.execute('CREATE TABLE manual_child (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE)')
+            connection.execute('INSERT INTO manual_child VALUES (1, ?)', (created['id'],))
+            connection.execute('CREATE TABLE audit (id INTEGER)')
+            connection.execute('CREATE TRIGGER manual_trigger AFTER UPDATE ON users BEGIN INSERT INTO audit VALUES (new.id); END')
+        evolution_checks.generate(miblo, project, env, 'User')
+        with sqlite3.connect(project / 'miblo.sqlite') as connection:
+            assert 'alias' not in [r[1] for r in connection.execute('PRAGMA table_info(users)')], 'Generation applied migrations'
+        cargo('build')
+        api = start()  # Stock generated SQLx startup must apply additive migrations too.
+        with sqlite3.connect(project / 'miblo.sqlite') as connection:
+            assert connection.execute('SELECT manual_column FROM users').fetchone()[0] == 'preserved'
+            assert connection.execute('SELECT user_id FROM manual_child').fetchone()[0] == created['id']
+            assert connection.execute('SELECT COUNT(*) FROM audit').fetchone()[0] == 0, 'Migration unexpectedly updated existing rows'
+            assert connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('manual_index','manual_trigger')").fetchone()[0] == 2
+            assert not connection.execute('PRAGMA foreign_key_check').fetchall()
+        evolution_checks.requests(request, '/users', path, dict(value, note=None, active=False, score=request('GET', path)['score']))
+        with sqlite3.connect(project / 'miblo.sqlite') as connection:
+            assert connection.execute('SELECT COUNT(*) FROM audit').fetchone()[0] > 0, 'Custom trigger no longer works'
         request('DELETE', path, expected=204)
         request('DELETE', path, expected=404)
         print('PASS: automatic SQLite setup, empty startup, models/tables, migrations, customized code preservation, CRUD, concurrent PATCH, unique/private/nullable fields and restart persistence')
