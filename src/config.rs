@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fs, path::Path};
 
 mod routes;
-pub use routes::{CustomRoute, HTTP_METHODS};
+pub use routes::{CustomRoute, HTTP_METHODS, RouteAction};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, clap::ValueEnum)]
 pub enum Database {
@@ -33,7 +33,7 @@ impl Database {
     }
     pub fn version(self) -> &'static str {
         match self {
-            Self::Sqlite | Self::Mysql => "0.5.0",
+            Self::Sqlite | Self::Mysql => "0.6.0",
         }
     }
 }

@@ -17,10 +17,17 @@ def generate(cli, project, resource, collection):
     for method in ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']:
         cli('route', 'add', 'custom_' + method.lower(), '--method', method, '--path', '/custom/' + method.lower(), '--yes', '--offline')
     cli('route', 'add', 'active_items', '--path', collection + '/active', '--resource', resource, '--yes', '--offline')
+    automatic = tuple(map(int, state['template']['version'].split('.'))) >= (0, 6, 0)
+    if automatic:
+        for action in ['list', 'get', 'create', 'update', 'delete']:
+            path = '/automatic' + collection + ('/{id}' if action in ['get', 'update', 'delete'] else '')
+            cli('route', 'add', 'model_' + action, '--resource', resource, '--action', action, '--path', path, '--yes', '--offline')
+            alias = project / ('src/resources/custom_routes/model_' + action)
+            assert (alias / 'handlers.rs').exists() and not (alias / 'service.rs').exists()
     assert service.read_text() == code
     assert json.loads((project / '.miblo/state.json').read_text())['next_migration'] == state['next_migration']
     assert {p: p.read_bytes() for p in (project / 'migrations').glob('*.sql')} == migrations
-    return True
+    return 'model-routes' if automatic else 'custom-routes'
 
 
 def requests(request, collection):
@@ -32,3 +39,26 @@ def requests(request, collection):
     request('HEAD', '/custom/get', expected=501)
     request('GET', collection + '/active', expected=501)
     print('PASS: custom routes, all HTTP methods, path/query/JSON extraction, SQL pool, 501 stubs, code and migration preservation', flush=True)
+
+
+def model_requests(request, collection, value):
+    """Exercise actual SQL through all five aliases, with no handwritten route code."""
+    alias = '/automatic' + collection
+    created = request('POST', alias, value, 201)
+    assert 'token' not in created
+    path = alias + '/' + str(created['id'])
+    canonical = collection + '/' + str(created['id'])
+    assert request('GET', path) == request('GET', canonical)
+    assert any(row['id'] == created['id'] for row in request('GET', alias + '?limit=100'))
+    request('GET', alias + '?limit=101', expected=400)
+    request('GET', alias + '/invalid-id', expected=400)
+    request('POST', alias, value, 409)
+    request('POST', alias, dict(value, id=77), 422)
+    request('PATCH', path, {}, 400)
+    changed = request('PATCH', path, {'active': False})
+    assert changed['active'] is False and request('GET', canonical)['active'] is False
+    request('DELETE', path, expected=204)
+    request('GET', canonical, expected=404)
+    request('GET', path, expected=404)
+    request('DELETE', path, expected=404)
+    print('PASS: model routes execute real SQL CRUD, validation, pagination, private fields and shared data', flush=True)

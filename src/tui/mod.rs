@@ -1,6 +1,7 @@
 mod forms;
 mod http;
 mod process;
+mod request_form;
 mod route_form;
 mod schema;
 mod splash;
@@ -90,6 +91,7 @@ struct App {
     show_schema: bool,
     schema: schema::Browser,
     template_draft: forms::TemplateDraft,
+    resume_route_after_template_update: bool,
 }
 
 pub fn run(project: Option<PathBuf>) -> Result<()> {
@@ -184,6 +186,7 @@ impl App {
             show_schema: false,
             schema: schema::Browser::default(),
             template_draft: forms::TemplateDraft::default(),
+            resume_route_after_template_update: false,
         }
     }
 
@@ -203,6 +206,7 @@ impl App {
         self.api_failure = None;
         self.api_ready = false;
         self.restart_required = false;
+        self.resume_route_after_template_update = false;
         self.db_status = "Non vérifiée".into();
         self.selected = 0;
         self.resource_selected = 0;
@@ -329,6 +333,7 @@ impl App {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             if self.dialog.is_some() {
                 self.dialog = None;
+                self.resume_route_after_template_update = false;
                 self.db_draft.password.clear();
                 self.notice = "Action annulée".into();
             } else {
@@ -442,18 +447,8 @@ impl App {
     }
     fn tick(&mut self) {
         self.schema.tick();
-        if self.tester.tick()
-            && let Some(reply) = &self.tester.reply
-        {
-            self.notice = format!(
-                "{} : {} · {} ms",
-                reply.method,
-                reply
-                    .status
-                    .map_or("échec réseau".into(), |s| format!("HTTP {s}")),
-                reply.elapsed_ms
-            );
-            self.log(self.notice.clone());
+        if self.tester.tick() {
+            self.received_response();
         }
         while let Ok(message) = self.receiver.try_recv() {
             if message.starts_with("[API]")
@@ -532,6 +527,11 @@ impl App {
                 self.creation_failed();
             } else if db_action.is_some() {
                 self.db_status = "Échec • consulter les logs".into();
+            } else if label == "Création de route" {
+                self.route_creation_failed();
+            }
+            if label == "Templates" {
+                self.template_update_finished(status.success());
             }
             if status.success() && label == "Création de route" {
                 self.show_schema = false;
@@ -545,6 +545,12 @@ impl App {
                     .unwrap_or(0);
                 if let Err(error) = self.preview_route() {
                     self.report(format!("{error:#}"));
+                } else {
+                    self.notice = if self.route_draft.action.is_some() {
+                        "Route créée • CRUD et SQL du modèle reliés • redémarre l’API puis x pour tester"
+                    } else {
+                        "Route créée • métier à compléter avec e • réponse initiale HTTP 501"
+                    }.into();
                 }
             }
             self.monitor.invalidate();
@@ -631,6 +637,11 @@ impl App {
         );
         if self.focus == Focus::Routes {
             self.preview_route()?;
+        } else if self.focus == Focus::Response
+            && let Some(route) = self.unimplemented_route()
+        {
+            let path = format!("src/resources/custom_routes/{}/service.rs", route.name);
+            self.load_file(Path::new(&path))?;
         }
         ensure!(self.file.is_some(), "Sélectionne un fichier d’abord");
         self.editor_requested = true;

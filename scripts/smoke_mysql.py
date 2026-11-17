@@ -115,6 +115,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
         if custom_routes: route_checks.requests(request, "/products")
         relation_checks.requests(request)
         value = dict(title='first', description='hello', price=1.5, quantity=2, active=True, token='never-return-this')
+        if custom_routes == 'model-routes': route_checks.model_requests(request, '/products', value)
         created = request('POST', '/products', value, 201)
         resource = f'/products/{created["id"]}'
         assert 'token' not in created and created['quantity'] == 2 and created['active'] is True
@@ -149,6 +150,8 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
             except (OSError, urllib.error.URLError): time.sleep(.1)
         else: raise RuntimeError('Evolved API did not start')
         evolution_checks.requests(request, '/products', resource, dict(value, description=None, quantity=0, active=False), layered=(project / 'src/resources/product/service.rs').exists())
+        if custom_routes == 'model-routes':
+            assert request('GET', '/automatic' + resource) == request('GET', resource)
         if custom_routes: route_checks.requests(request, "/products")
         request('DELETE', resource, expected=204)
         request('DELETE', resource, expected=404)

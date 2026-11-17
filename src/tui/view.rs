@@ -8,14 +8,14 @@ use ratatui::{
 };
 
 #[derive(Clone, Copy)]
-struct Palette {
-    background: Color,
-    panel: Color,
-    foreground: Color,
-    muted: Color,
-    accent: Color,
-    border: Color,
-    selected: Color,
+pub(super) struct Palette {
+    pub(super) background: Color,
+    pub(super) panel: Color,
+    pub(super) foreground: Color,
+    pub(super) muted: Color,
+    pub(super) accent: Color,
+    pub(super) border: Color,
+    pub(super) selected: Color,
 }
 fn palette(index: usize) -> Palette {
     match index {
@@ -336,7 +336,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             } else {
                 "Sélectionne une route puis x ou Entrée."
             }));
-            response.push(Line::from("f : choisir méthode, chemin et JSON"));
+            response.push(Line::from("f : choisir méthode, chemin et champs"));
             response.push(Line::from("Les écritures demandent confirmation."));
         }
         frame.render_widget(
@@ -559,7 +559,12 @@ fn description_lines(description: &[String], width: u16) -> Vec<String> {
 
 fn draw_dialog(frame: &mut Frame, dialog: &mut forms::Dialog, colors: Palette) {
     use forms::Dialog;
+    if let Dialog::Request(form) = dialog {
+        super::request_form::draw(frame, form, colors);
+        return;
+    }
     let height = match dialog {
+        Dialog::Request(_) => unreachable!(),
         Dialog::Input { .. } => 7,
         Dialog::Select {
             description, items, ..
@@ -574,6 +579,7 @@ fn draw_dialog(frame: &mut Frame, dialog: &mut forms::Dialog, colors: Palette) {
     let area = centered(frame.area(), 78, height);
     frame.render_widget(Clear, area);
     match dialog {
+        Dialog::Request(_) => unreachable!(),
         Dialog::Input { title, value, kind } => {
             let block = panel(format!(" {title} "), true, colors);
             let inner = block.inner(area);

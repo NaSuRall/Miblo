@@ -1,5 +1,6 @@
 use super::*;
 use crate::{config::CustomRoute, templates::ROUTE_FILES};
+use heck::ToSnakeCase;
 
 const ROUTES: &str = "src/resources/custom_routes/mod.rs";
 
@@ -9,13 +10,25 @@ pub(super) fn supported(pack: &Pack, project: &Project) -> Result<()> {
             || (pack.format >= 3 && pack.features.iter().any(|f| f == "custom-routes")),
         "Ce template ne permet pas encore de créer des routes. Appuie sur u dans Miblo ou utilise miblo template update (version 0.5.0 ou ultérieure), puis réessaie. Aucun fichier modifié."
     );
+    ensure!(
+        !project.routes.iter().any(|r| r.action.is_some())
+            || pack.features.iter().any(|f| f == "model-routes"),
+        "Ce template ne permet pas encore les routes CRUD de modèles. Appuie sur u ou utilise miblo template update (pack 0.6.0 ou ultérieur). Aucun fichier modifié."
+    );
     Ok(())
 }
 
 fn route_files(pack: &Pack, route: &CustomRoute, files: &mut Files) -> Result<()> {
     let data = json!({ "name": route.name, "method": route.method.to_lowercase(), "path": route.path,
-        "parameters": route.parameters(), "json_body": route.json_body });
+        "parameters": route.parameters(), "json_body": route.json_body,
+        "action_handler": route.action.map(|a| a.handler()),
+        "resource_module": route.resource.as_ref().map(|r| r.to_snake_case()) });
     for (template, output) in ROUTE_FILES {
+        // Automatic routes share the model's handlers, validation and SQL. Only
+        // the router and its explicit handler alias need their own files.
+        if route.action.is_some() && matches!(*output, "requests.rs" | "service.rs") {
+            continue;
+        }
         files.insert(
             format!("src/resources/custom_routes/{}/{output}", route.name),
             render_source(pack, template, &data)?,
@@ -117,9 +130,21 @@ pub fn add_route(
         return Ok(());
     }
     commit(root, &files, &originals)?;
-    println!(
-        "Route créée : {} {}\nComplète src/resources/custom_routes/{}/service.rs dans ton éditeur.\nLe handler renvoie HTTP 501 jusqu’à son implémentation. Redémarre l’API pour charger cette route. Aucune migration SQL.",
-        route.method, route.path, route.name
-    );
+    println!("Route créée : {} {}", route.method, route.path);
+    if let Some(action) = route.action {
+        println!(
+            "{} · CRUD et SQL du modèle {} reliés automatiquement.",
+            action.label(),
+            route.resource.as_deref().unwrap_or_default()
+        );
+        println!(
+            "Redémarre l’API pour charger cette route, puis teste-la avec x. Aucune nouvelle table."
+        );
+    } else {
+        println!(
+            "Complète src/resources/custom_routes/{}/service.rs dans ton éditeur.\nLe handler renvoie HTTP 501 jusqu’à son implémentation. Redémarre l’API pour charger cette route. Aucune migration SQL.",
+            route.name
+        );
+    }
     Ok(())
 }

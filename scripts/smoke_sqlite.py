@@ -81,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         assert (project / '.env').exists() and not (project / 'compose.yaml').exists()
         if args.remote:
             lock = json.loads((project / '.miblo/state.json').read_text())['template']
-            assert lock['local_path'] is None and lock['url'].endswith('/v0.5.0/rust-axum-sqlite.tar.gz')
+            assert lock['local_path'] is None and lock['url'].endswith('/v0.6.0/rust-axum-sqlite.tar.gz')
         cargo('build')
         assert not (project / 'miblo.sqlite').exists()
         api = start()
@@ -112,6 +112,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
         if custom_routes: route_checks.requests(request, "/users")
         relation_checks.requests(request)
         value = dict(email='first@example.test', name='First', note='hello', score=1.5, active=True, token='private-example')
+        if custom_routes == 'model-routes': route_checks.model_requests(request, '/users', value)
         created = request('POST', '/users', value, 201)
         assert 'token' not in created and created['active'] is True
         path = f'/users/{created["id"]}'
@@ -157,6 +158,8 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
             assert connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('manual_index','manual_trigger')").fetchone()[0] == 2
             assert not connection.execute('PRAGMA foreign_key_check').fetchall()
         evolution_checks.requests(request, '/users', path, dict(value, note=None, active=False, score=request('GET', path)['score']), layered=(project / 'src/resources/user/service.rs').exists())
+        if custom_routes == 'model-routes':
+            assert request('GET', '/automatic' + path) == request('GET', path)
         with sqlite3.connect(project / 'miblo.sqlite') as connection:
             assert connection.execute('SELECT COUNT(*) FROM audit').fetchone()[0] > 0, 'Custom trigger no longer works'
         if custom_routes: route_checks.requests(request, "/users")

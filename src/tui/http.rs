@@ -1,4 +1,4 @@
-use crate::config::{FieldType, Project};
+use crate::config::{CustomRoute, FieldType, Project};
 use anyhow::{Context, Result, ensure};
 use reqwest::{Method, Url, blocking::Client, redirect::Policy};
 use std::{
@@ -91,6 +91,33 @@ pub fn sample_path(path: &str) -> String {
         .join("/")
 }
 
+/// Explicit custom-route body choices take priority over HTTP-method defaults.
+pub(super) fn needs_body_form(project: Option<&Project>, request: &Request) -> bool {
+    if let Some(route) = project.and_then(|p| custom_route(p, &request.method, &request.path)) {
+        return route.json_body;
+    }
+    !request.body.is_empty() || matches!(request.method.as_str(), "POST" | "PATCH" | "PUT")
+}
+
+/// Match the concrete HTTP path with the same static-path priority as Axum.
+/// Include CRUD paths so an unrelated method cannot fall through to a dynamic route.
+pub(super) fn custom_route<'a>(
+    project: &'a Project,
+    method: &str,
+    path: &str,
+) -> Option<&'a CustomRoute> {
+    let mut router = matchit::Router::new();
+    for route in routes(project) {
+        let _ = router.insert(route.path.clone(), route.path);
+    }
+    let path = path.split('?').next().unwrap_or(path);
+    let matched = router.at(path).ok()?;
+    project.routes.iter().find(|route| {
+        &route.path == matched.value
+            && (route.method == method || (method == "HEAD" && route.method == "GET"))
+    })
+}
+
 pub fn request_url(base: &str, path: &str) -> Result<Url> {
     ensure!(
         path.starts_with('/')
@@ -143,6 +170,10 @@ pub struct Reply {
 }
 
 pub fn send(base: &str, request: Request) -> Reply {
+    send_with_timeout(base, request, Duration::from_secs(10))
+}
+
+pub(super) fn send_with_timeout(base: &str, request: Request, timeout: Duration) -> Reply {
     let start = Instant::now();
     let mut reply = Reply {
         method: request.method.clone(),
@@ -156,7 +187,7 @@ pub fn send(base: &str, request: Request) -> Reply {
     let result = (|| -> Result<()> {
         validate(base, &request)?;
         let client = Client::builder()
-            .timeout(Duration::from_secs(10))
+            .timeout(timeout)
             .connect_timeout(Duration::from_secs(3))
             .redirect(Policy::none())
             .no_proxy()

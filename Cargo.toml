@@ -1,6 +1,6 @@
 [package]
 name = "miblo_cli_v2"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 description = "Terminal workspace for Rust APIs with SQLite or MySQL and remote templates"
 license = "MIT"

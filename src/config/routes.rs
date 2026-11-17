@@ -3,6 +3,66 @@ use std::collections::BTreeMap;
 
 pub const HTTP_METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum RouteAction {
+    List,
+    Get,
+    Create,
+    Update,
+    Delete,
+}
+
+impl RouteAction {
+    pub const ALL: [Self; 5] = [
+        Self::List,
+        Self::Get,
+        Self::Create,
+        Self::Update,
+        Self::Delete,
+    ];
+
+    pub fn arg(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Get => "get",
+            Self::Create => "create",
+            Self::Update => "update",
+            Self::Delete => "delete",
+        }
+    }
+    pub fn handler(self) -> &'static str {
+        if self == Self::Get {
+            "get_one"
+        } else {
+            self.arg()
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::List => "Lister les lignes",
+            Self::Get => "Consulter une ligne par id",
+            Self::Create => "Créer une ligne",
+            Self::Update => "Modifier une ligne par id",
+            Self::Delete => "Supprimer une ligne par id",
+        }
+    }
+    pub fn method(self) -> &'static str {
+        match self {
+            Self::List | Self::Get => "GET",
+            Self::Create => "POST",
+            Self::Update => "PATCH",
+            Self::Delete => "DELETE",
+        }
+    }
+    pub fn json_body(self) -> bool {
+        matches!(self, Self::Create | Self::Update)
+    }
+    pub fn needs_id(self) -> bool {
+        matches!(self, Self::Get | Self::Update | Self::Delete)
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CustomRoute {
@@ -13,6 +73,8 @@ pub struct CustomRoute {
     pub resource: Option<String>,
     #[serde(default)]
     pub json_body: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<RouteAction>,
 }
 
 impl CustomRoute {
@@ -43,6 +105,36 @@ impl CustomRoute {
             !self.json_body || ["POST", "PUT", "PATCH", "DELETE"].contains(&self.method.as_str()),
             "JSON bodies are supported for POST, PUT, PATCH and DELETE"
         );
+        if let Some(action) = self.action {
+            ensure!(
+                self.resource.is_some(),
+                "Choisis un modèle pour cette action CRUD (--resource)"
+            );
+            ensure!(
+                self.method == action.method(),
+                "Cette action utilise la méthode {}",
+                action.method()
+            );
+            ensure!(
+                self.json_body == action.json_body(),
+                "Le corps JSON doit correspondre à l’action CRUD"
+            );
+            let expected = if action.needs_id() {
+                vec!["id"]
+            } else {
+                Vec::new()
+            };
+            ensure!(
+                self.parameters() == expected,
+                "{} : {}",
+                action.label(),
+                if action.needs_id() {
+                    "le chemin doit contenir un unique paramètre {id} (ex. /users/detail/{id})"
+                } else {
+                    "le chemin ne doit pas contenir de paramètre"
+                }
+            );
+        }
         ensure!(
             self.path.starts_with('/') && self.path.len() <= 256,
             "Route path must start with / (max 256 characters)"
@@ -126,7 +218,8 @@ pub(super) fn validate(project: &Project) -> Result<()> {
                 .find(|r| &r.name == name)
                 .with_context(|| format!("Unknown model: {name}"))?;
             ensure!(
-                route.path == resource.path
+                route.action.is_some()
+                    || route.path == resource.path
                     || route.path.starts_with(&format!("{}/", resource.path)),
                 "Route associated with {name} must start with {}",
                 resource.path
@@ -196,6 +289,37 @@ mod tests {
         }
         let mut p = project("GET", "/groups/active");
         p.routes[0].resource = Some("User".into());
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn model_actions_enforce_their_http_and_id_contract() {
+        for action in RouteAction::ALL {
+            let mut p = project(
+                action.method(),
+                if action.needs_id() {
+                    "/members/{id}"
+                } else {
+                    "/members"
+                },
+            );
+            p.routes[0].action = Some(action);
+            p.routes[0].resource = Some("User".into());
+            p.routes[0].json_body = action.json_body();
+            p.validate().unwrap();
+            for path in ["/members/{slug}", "/members/{id}/groups/{group_id}"] {
+                p.routes[0].path = path.into();
+                assert!(p.validate().is_err());
+            }
+        }
+        let mut p = project("GET", "/members");
+        p.routes[0].action = Some(RouteAction::Create);
+        p.routes[0].resource = Some("User".into());
+        p.routes[0].json_body = true;
+        assert!(p.validate().is_err());
+        p.routes[0].method = "POST".into();
+        p.validate().unwrap();
+        p.routes[0].resource = None;
         assert!(p.validate().is_err());
     }
 }

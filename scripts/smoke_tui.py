@@ -30,6 +30,7 @@ parser.add_argument('--templates', type=Path, required=True)
 parser.add_argument('--database', choices=['sqlite', 'mysql'], default='sqlite')
 parser.add_argument('--capture-json', type=Path)
 parser.add_argument('--splash-capture-json', type=Path)
+parser.add_argument('--request-capture-json', type=Path)
 parser.add_argument('--schema-capture-json', type=Path)
 parser.add_argument('--edit-capture-json', type=Path)
 parser.add_argument('--api-target-dir', type=Path, help='Build and test real SQLite CRUD routes in the TUI')
@@ -152,14 +153,14 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
         ui.send('\x15' + str(api_port) + '\r'); ui.wait('Base de données')
         ui.send(('\x1b[B' if args.database == 'mysql' else '') + '\r'); ui.wait('Source du template')
         ui.wait('Dossier local — chemin proposé')
-        ui.send('\x1b[B\r'); ui.wait('URL du template')
+        ui.send('\x1b[B\x1b[B\r'); ui.wait('URL du template')
         ui.send(missing_url + '\r'); ui.wait('Créer cette API ?')
         ui.send('\r'); ui.wait('La création a échoué')
         ui.wait('HTTP 404')
         project = checkout / 'atelier-demo'
         assert not project.exists(), 'Failed template download wrote a partial project'
         ui.send('\r'); ui.wait('Source du template')
-        ui.send('\r'); ui.wait('Dossier du template')
+        ui.send('\x1b[B\r'); ui.wait('Dossier du template')
         ui.wait('miblo_templates/' + folder)
         ui.send('\r'); ui.wait('Créer cette API ?')
         ui.send('\r'); ui.wait('Configuration cohérente')
@@ -246,30 +247,55 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
         if args.api_target_dir:
             ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('GET : HTTP 200')
             ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('GET /products ·')
-            ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('Corps JSON')
-            ui.send('\x15{"title":"from-tui","quantity":3}\r'); ui.wait('Envoyer cette requête ?')
-            ui.send('\r'); ui.wait('Requête annulée')
+            ui.send(':routes\rj'); ui.send('x'); ui.wait('Préparer la requête')
+            ui.wait('title · texte'); ui.wait('quantity · entier'); ui.wait('Envoyer la requête')
+            ui.send('\x1b'); ui.wait('Requête annulée')
             with sqlite3.connect(project / 'miblo.sqlite') as connection:
                 assert connection.execute('SELECT COUNT(*) FROM products').fetchone()[0] == 0
-            ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('Corps JSON')
-            ui.send('\x15{"title":"from-tui","quantity":3}\r'); ui.wait('Envoyer cette requête ?')
-            ui.send('\x1b[A\r'); ui.wait('POST : HTTP 201')
+            # Send the preconstructed POST without entering any JSON or field values.
+            ui.send('x'); ui.wait('Préparer la requête')
+            ui.wait('quantity · entier'); ui.wait('Champs préremplis'); ui.pump(.1)
+            if args.request_capture_json: ui.capture(args.request_capture_json)
+            ui.resize(75, 22)
+            for _ in range(4): ui.pump(.1)
+            ui.wait('Envoyer la requête'); ui.wait('quantity')
+            ui.resize(130, 40)
+            for _ in range(4): ui.pump(.1)
+            ui.send('\r'); ui.wait('POST : HTTP 201')
             with sqlite3.connect(project / 'miblo.sqlite') as connection:
-                assert connection.execute('SELECT title FROM products').fetchone()[0] == 'from-tui'
+                created_row = connection.execute('SELECT title, quantity FROM products').fetchone()
+                assert created_row[0].startswith('exemple-') and created_row[1] is None
+            # Another POST receives a different unique title automatically.
+            ui.send('x'); ui.wait('Préparer la requête'); ui.send('\r'); ui.wait('POST : HTTP 201')
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                ui.pump()
+                with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                    if connection.execute('SELECT COUNT(*) FROM products').fetchone()[0] == 2: break
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert connection.execute('SELECT COUNT(DISTINCT title) FROM products').fetchone()[0] == 2
             ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('GET /products/1 ·')
-            ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('Corps JSON')
-            ui.send('\x15{"title":"updated-tui"}\r'); ui.wait('Envoyer cette requête ?')
-            ui.send('\x1b[A\r'); ui.wait('PATCH : HTTP 200')
-            ui.wait('updated-tui')
+            ui.send(':routes\rj'); ui.send('x'); ui.wait('Préparer la requête')
+            ui.wait('non envoyé'); ui.send('jj\r'); ui.wait('Saisis uniquement la valeur')
+            ui.send('\x15updated-tui\r'); ui.wait('Envoyer la requête')
+            ui.send('kk\r'); ui.wait('PATCH : HTTP 200'); ui.wait('updated-tui')
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert connection.execute('SELECT title,quantity FROM products WHERE id=1').fetchone() == ('updated-tui', None)
             if args.capture_json: ui.capture(args.capture_json)
             ui.send(':routes\rj'); ui.send('x'); ui.wait('Chemin HTTP'); ui.send('\r'); ui.wait('Envoyer cette requête ?')
             ui.send('\x1b[A\r'); ui.wait('DELETE : HTTP 204')
             with sqlite3.connect(project / 'miblo.sqlite') as connection:
-                assert connection.execute('SELECT COUNT(*) FROM products').fetchone()[0] == 0
+                assert connection.execute('SELECT COUNT(*) FROM products').fetchone()[0] == 1
             ui.send('f'); ui.wait('Méthode HTTP'); ui.send('\r'); ui.wait('Chemin HTTP')
             ui.send('\x15/products/999\r'); ui.wait('GET : HTTP 404')
             ui.send('v'); ui.wait_absent('Aperçu ·'); ui.send('v'); ui.wait('Aperçu ·')
 
+        if args.api_target_dir:
+            ui.send(':routes\rjj'); ui.send('x'); ui.wait('Préparer la requête')
+            ui.send('jjj\r'); ui.wait('premières lignes disponibles')
+            ui.wait('#2'); ui.send('\r'); ui.send('kkk\r'); ui.wait('POST /stocks ·'); ui.wait('POST : HTTP 201')
+            with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                assert connection.execute('SELECT product_id FROM stocks').fetchone()[0] == 2
         ui.send('s'); ui.wait('API arrêtée')
         assert stopped(first_pid), f'API child {first_pid} survived stop'
         if args.database == 'sqlite':
@@ -323,24 +349,53 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
             ui.send('\x1b'); ui.wait_absent('Créer une route — modèle associé')
             assert (project / 'miblo.yaml').read_bytes() == config_before
             ui.send('g'); ui.wait('Créer une route — modèle associé')
-            ui.send('\x1b[B\r'); ui.wait('Méthode de la nouvelle route')
+            ui.send('\r'); ui.wait('Action de la route pour ce modèle')
+            ui.send('\x1b[B' * 5 + '\r'); ui.wait('Méthode de la nouvelle route')
             ui.send('\r'); ui.wait('Chemin de la route')
             ui.send('\x15/products/active\r'); ui.wait('Nom de la route / fonction')
             ui.send('\x15active_products\r'); ui.wait('Créer cette route ?'); ui.wait('501 non implémenté')
             ui.send('\r'); ui.wait('Création de route : exit status: 0'); ui.wait('Aucune action en cours')
             ui.send('e'); ui.wait('État')
             deadline = time.monotonic() + 5
-            while time.monotonic() < deadline and 'custom_routes/active_products/handlers.rs' not in marker.read_text(): ui.pump()
-            assert marker.read_text().endswith('/custom_routes/active_products/handlers.rs')
+            while time.monotonic() < deadline and 'custom_routes/active_products/service.rs' not in marker.read_text(): ui.pump()
+            assert marker.read_text().endswith('/custom_routes/active_products/service.rs')
+
+        model_routes = 'model-routes' in json.loads((local_pack / 'manifest.json').read_text()).get('features', [])
+        if model_routes:
+            ui.send('g'); ui.wait('Créer une route — modèle associé')
+            ui.send('\r'); ui.wait('Action de la route pour ce modèle')
+            ui.send('\x1b[B' * 2 + '\r'); ui.wait('Chemin de la route')
+            ui.send('\x15/products/quick\r'); ui.wait('Nom de la route / fonction')
+            ui.send('\x15quick_create\r'); ui.wait('Créer cette route ?'); ui.wait('SQL du modèle')
+            # A modified local checkout must keep the form and offer recovery.
+            asset = local_pack / 'route/handlers.rs.hbs'
+            original_asset = asset.read_bytes()
+            asset.write_bytes(original_asset + b'\n')
+            ui.send('\r'); ui.wait('Template à mettre à jour')
+            assert not (project / 'src/resources/custom_routes/quick_create').exists()
+            asset.write_bytes(original_asset)
+            ui.send('\x1b[B\r'); ui.wait('Créer cette route ?'); ui.wait('/products/quick')
+            ui.send('\r'); ui.wait('CRUD et SQL du modèle reliés'); ui.wait('Aucune action en cours')
+            alias = project / 'src/resources/custom_routes/quick_create'
+            assert 'product::handlers::create' in (alias / 'handlers.rs').read_text()
+            assert not (alias / 'service.rs').exists()
 
         ui.send('r'); ui.wait('API en cours' if args.api_target_dir else 'API ne répond pas', timeout=120)
         if args.api_target_dir:
             with urllib.request.urlopen(f'http://127.0.0.1:{api_port}/products/{old_id}') as response:
                 row = json.load(response)
             assert row['title'] == 'before-edit' and row['alias'] is None and row['stock_id'] is None
+            if model_routes:
+                with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                    count_before = connection.execute('SELECT COUNT(*) FROM products').fetchone()[0]
+                ui.send('x'); ui.wait('Préparer la requête'); ui.wait('/products/quick')
+                ui.send('\r'); ui.wait('HTTP 201')
+                with sqlite3.connect(project / 'miblo.sqlite') as connection:
+                    assert connection.execute('SELECT COUNT(*) FROM products').fetchone()[0] == count_before + 1
+                ui.send(':routes\r'); ui.send('k')
             if (project / 'src/resources/custom_routes').exists():
                 ui.send('x'); ui.wait('Chemin HTTP'); ui.wait('/products/active')
-                ui.send('\r'); ui.wait('HTTP 501'); ui.wait('Route not implemented')
+                ui.send('\r'); ui.wait('HTTP 501'); ui.wait('action à implémenter'); ui.wait('service.rs')
         second_pid = int((root / 'api-child.pid').read_text())
         assert second_pid != first_pid
         ui.send('q')

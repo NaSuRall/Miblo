@@ -87,12 +87,18 @@ pub fn digest(bytes: &[u8]) -> String {
 pub fn discover_local(start: &Path, database: crate::config::Database) -> Option<PathBuf> {
     let folders = if database == crate::config::Database::Sqlite {
         [
+            "rust_sqlite_template_v4",
             "rust_sqlite_template_v3",
             "rust_sqlite_template_v2",
             "rust_sqlite_template_v1",
         ]
     } else {
-        ["rust_template_v3", "rust_template_v2", "rust_template_v1"]
+        [
+            "rust_template_v4",
+            "rust_template_v3",
+            "rust_template_v2",
+            "rust_template_v1",
+        ]
     };
     for parent in start.ancestors() {
         for folder in folders {
@@ -279,7 +285,9 @@ impl Pack {
         };
         ensure!(
             pack.lock.fingerprint == lock.fingerprint && pack.lock.version == lock.version,
-            "Template changed since project creation; restore the pinned template before adding a resource"
+            "Le template a changé depuis la création du projet.\nVersion attendue : {} ; version trouvée : {}.\nPour créer une route ou un modèle : touche u → GitHub Releases, ou miblo template update.\nLes modèles existants gardent leur template d’origine : restaure sa version exacte avant de les modifier. Aucun fichier du projet n’a été modifié.",
+            lock.version,
+            pack.lock.version,
         );
         Ok(pack)
     }

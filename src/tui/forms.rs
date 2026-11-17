@@ -21,14 +21,15 @@ pub(super) enum InputKind {
     DbUser,
     DbPassword,
     HttpPath,
-    HttpBody,
     RelationName,
     TemplateLocal,
     TemplateUrl,
 }
 #[derive(Clone, Copy)]
 pub(super) enum ChoiceKind {
+    RouteRecovery,
     RouteResource,
+    RouteAction,
     RouteMethod,
     RouteBody,
     RouteConfirm,
@@ -55,6 +56,7 @@ pub(super) enum ChoiceKind {
 }
 #[derive(Clone)]
 pub(super) enum Dialog {
+    Request(Box<super::request_form::Form>),
     Input {
         kind: InputKind,
         title: String,
@@ -109,6 +111,10 @@ impl App {
             .context("Ouvre un projet pour tester ses routes")?
             .clone();
         self.show_schema = false;
+        if http::needs_body_form(self.project.as_ref(), &self.request_draft) {
+            return self.prepare_request();
+        }
+        self.request_draft.body.clear();
         // Every request exposes its path, including query parameters, before sending.
         self.input(
             InputKind::HttpPath,
@@ -150,7 +156,7 @@ impl App {
             self.launch_request()
         }
     }
-    fn launch_request(&mut self) -> Result<()> {
+    pub(super) fn launch_request(&mut self) -> Result<()> {
         ensure!(
             self.job.is_none(),
             "Attends la fin de l’action avant de tester la route"
@@ -212,9 +218,9 @@ impl App {
                 "Requête HTTP personnalisée",
                 "Afficher / masquer l’aperçu du code",
                 "Voir le schéma de la base de données",
-                "Mettre à jour les templates des futurs modèles",
+                "Mettre à jour les templates des futurs modèles et routes",
                 "Modifier un modèle existant : champs / relations",
-                "Créer une route personnalisée",
+                "Créer une route de modèle / personnalisée",
             ],
             Vec::new(),
             0,
@@ -251,7 +257,7 @@ impl App {
                 ),
                 "La source distante exige une archive .tar.gz et son .sha256.".into(),
             ],
-            usize::from(local),
+            0,
         );
     }
 
@@ -360,13 +366,18 @@ impl App {
         let Some(mut dialog) = self.dialog.take() else {
             return Ok(());
         };
+        if let Dialog::Request(form) = dialog {
+            return self.request_form_key(form, key);
+        }
         if key.code == KeyCode::Esc {
+            self.resume_route_after_template_update = false;
             self.db_draft.password.clear();
             self.notice = "Action annulée • Aucun fichier modifié".into();
             return Ok(());
         }
         let previous = dialog.clone();
         let result = match &mut dialog {
+            Dialog::Request(_) => unreachable!(),
             Dialog::Help => {
                 return Ok(());
             }
@@ -394,11 +405,7 @@ impl App {
                         .modifiers
                         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                 {
-                    let limit = if matches!(kind, InputKind::HttpBody) {
-                        64 * 1024
-                    } else {
-                        4096
-                    };
+                    let limit = 4096;
                     if value.len() + c.len_utf8() <= limit {
                         value.push(c);
                     }
@@ -689,19 +696,12 @@ impl App {
             InputKind::HttpPath => {
                 http::request_url(&self.base_url, value)?;
                 self.request_draft.path = value.into();
-                if matches!(self.request_draft.method.as_str(), "POST" | "PATCH" | "PUT") {
-                    self.input(
-                        InputKind::HttpBody,
-                        "Corps JSON de la requête",
-                        &self.request_draft.body.clone(),
-                    );
+                if http::needs_body_form(self.project.as_ref(), &self.request_draft) {
+                    self.prepare_request()?;
                 } else {
+                    self.request_draft.body.clear();
                     self.confirm_request()?;
                 }
-            }
-            InputKind::HttpBody => {
-                self.request_draft.body = value.into();
-                self.confirm_request()?;
             }
             InputKind::DbHost => {
                 ensure!(!value.is_empty(), "Indique le serveur MySQL");
@@ -772,7 +772,18 @@ impl App {
 
     fn submit_choice(&mut self, kind: ChoiceKind, selected: usize) -> Result<()> {
         match kind {
+            ChoiceKind::RouteRecovery => {
+                if selected == 0 {
+                    self.start_template_update()?;
+                    self.resume_route_after_template_update = true;
+                } else if selected == 1 {
+                    self.confirm_route();
+                } else {
+                    self.notice = "Création de route annulée".into();
+                }
+            }
             ChoiceKind::RouteResource
+            | ChoiceKind::RouteAction
             | ChoiceKind::RouteMethod
             | ChoiceKind::RouteBody
             | ChoiceKind::RouteConfirm => self.route_choice(kind, selected)?,
@@ -955,7 +966,7 @@ impl App {
                     }
                     _ => self.input(
                         InputKind::TemplateUrl,
-                        "URL du template 0.5.0 (.tar.gz)",
+                        "URL du template 0.6.0 (.tar.gz)",
                         "",
                     ),
                 }
@@ -980,6 +991,8 @@ impl App {
                         ]),
                     }
                     self.cli_job(args, "Templates", None, true)?;
+                } else {
+                    self.resume_route_after_template_update = false;
                 }
             }
             ChoiceKind::FieldType => {
@@ -1188,12 +1201,13 @@ impl App {
     }
     pub(super) fn start_template_update(&mut self) -> Result<()> {
         let (_, state) = generation::inspect(self.ready_for_job()?)?;
+        self.resume_route_after_template_update = false;
         self.template_draft = TemplateDraft::default();
         self.choose(
             ChoiceKind::TemplateSource,
-            "Templates pour les futurs modèles",
+            "Templates pour les futurs modèles et routes",
             &[
-                "GitHub Releases — version 0.5.0, routes personnalisées",
+                "GitHub Releases — version 0.6.0, routes CRUD de modèles",
                 "Dossier local",
                 "URL personnalisée",
             ],
@@ -1207,13 +1221,13 @@ impl App {
     }
     fn confirm_template_update(&mut self) {
         let source = if self.template_draft.source == 0 {
-            "GitHub Releases · version 0.5.0".into()
+            "GitHub Releases · version 0.6.0".into()
         } else {
             self.template_draft.location.clone()
         };
         self.choose(
             ChoiceKind::TemplateConfirm,
-            "Utiliser ce template pour les futurs modèles ?",
+            "Utiliser ce template pour les futurs modèles et routes ?",
             &["Mettre à jour", "Annuler"],
             vec![
                 source,

@@ -649,7 +649,7 @@ fn changed_template_and_invalid_fields_are_rejected() {
             &["add", "resource", "Order", "--field", "total:int", "--yes"],
             &root,
         ),
-        "Template changed",
+        "miblo template update",
     );
     assert_eq!(tree(&root), before);
 }
@@ -1300,4 +1300,115 @@ fn route_archives_work_offline_and_refuse_file_collisions() {
         .success()
     );
     assert_eq!(tree(&root), before);
+}
+
+#[test]
+fn model_routes_require_capable_templates_and_preserve_models_and_migrations() {
+    let dir = TempDir::new().unwrap();
+    let root = editable_project(dir.path());
+    let old = route_pack(&dir.path().join("old-routes"));
+    success(cli(
+        &[
+            "template",
+            "update",
+            "--template-dir",
+            old.to_str().unwrap(),
+        ],
+        &root,
+    ));
+    let args = [
+        "route",
+        "add",
+        "members",
+        "--resource",
+        "User",
+        "--action",
+        "create",
+        "--path",
+        "/members",
+        "--yes",
+    ];
+    let before = tree(&root);
+    failure(cli(&args, &root), "pack 0.6.0");
+    assert_eq!(tree(&root), before);
+    let next = route_pack(&dir.path().join("next-routes"));
+    fs::write(next.join("manifest.json"), r#"{"schema_version":3,"id":"rust-axum-sqlite","version":"0.6.0","features":["relations","layered-resources","custom-routes","model-routes"]}"#).unwrap();
+    fs::write(next.join("route/mod.rs.hbs"), "pub mod handlers; {{#unless action_handler}}pub mod requests; pub mod service;{{/unless}}\n").unwrap();
+    fs::write(next.join("route/handlers.rs.hbs"), "pub use crate::resources::{{resource_module}}::handlers::{{action_handler}} as {{name}};\n").unwrap();
+    success(cli(
+        &[
+            "template",
+            "update",
+            "--template-dir",
+            next.to_str().unwrap(),
+        ],
+        &root,
+    ));
+    let before = tree(&root);
+    success(cli(&[&args[..], &["--dry-run"]].concat(), &root));
+    assert_eq!(tree(&root), before);
+    let output = success(cli(&args, &root));
+    let message = String::from_utf8(output.stdout).unwrap();
+    assert!(message.contains("reliés automatiquement") && !message.contains("501"));
+    let alias = root.join("src/resources/custom_routes/members");
+    assert!(
+        fs::read_to_string(alias.join("handlers.rs"))
+            .unwrap()
+            .contains("user::handlers::create as members")
+    );
+    assert!(!alias.join("service.rs").exists() && !alias.join("requests.rs").exists());
+    for (path, bytes) in before.iter().filter(|(p, _)| {
+        p.starts_with(root.join("src/resources/user")) || p.starts_with(root.join("migrations"))
+    }) {
+        assert_eq!(&fs::read(path).unwrap(), bytes);
+    }
+    let config = fs::read_to_string(root.join("miblo.yaml")).unwrap();
+    assert!(config.contains("action: create") && config.contains("method: POST"));
+    let before = tree(&root);
+    for (method, action, path) in [
+        ("GET", "create", "/other"),
+        ("GET", "get", "/other"),
+        ("GET", "list", "/other/{id}"),
+        ("PATCH", "update", "/other/{id}/{group_id}"),
+    ] {
+        let output = cli(
+            &[
+                "route",
+                "add",
+                "invalid",
+                "--resource",
+                "User",
+                "--action",
+                action,
+                "--method",
+                method,
+                "--path",
+                path,
+                "--yes",
+            ],
+            &root,
+        );
+        assert!(!output.status.success());
+        assert_eq!(tree(&root), before);
+    }
+    failure(
+        cli(
+            &[
+                "template",
+                "update",
+                "--template-dir",
+                old.to_str().unwrap(),
+            ],
+            &root,
+        ),
+        "pack 0.6.0",
+    );
+    assert_eq!(tree(&root), before);
+    success(cli(&["edit", "User", "alias:string?", "--yes"], &root));
+    assert!(
+        fs::read_to_string(alias.join("handlers.rs"))
+            .unwrap()
+            .contains("user::handlers::create as members")
+    );
+    success(cli(&["doctor"], &root));
 }

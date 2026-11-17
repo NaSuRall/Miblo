@@ -1,5 +1,8 @@
 use crate::{
-    config::{CustomRoute, Database, HTTP_METHODS, Project, Resource, parse_field, project_name},
+    config::{
+        CustomRoute, Database, HTTP_METHODS, Project, Resource, RouteAction, parse_field,
+        project_name,
+    },
     generation, runtime,
     templates::{self, Pack},
     wizard,
@@ -32,7 +35,7 @@ enum Command {
     Add(AddArgs),
     /// Add optional fields or relations to an existing model, preserving data and custom code.
     Edit(EditArgs),
-    /// Create custom HTTP routes with separate handlers and business functions.
+    /// Create a model CRUD route or a custom business function.
     Route {
         #[command(subcommand)]
         command: RouteCommand,
@@ -75,14 +78,17 @@ enum RouteCommand {
 struct RouteArgs {
     /// Snake_case name for the generated module and function.
     name: String,
-    #[arg(long, default_value = "GET", value_parser = HTTP_METHODS.to_vec(), ignore_case = true)]
-    method: String,
+    #[arg(long, value_parser = HTTP_METHODS.to_vec(), ignore_case = true)]
+    method: Option<String>,
     /// Path such as /users/active or /users/{id}/activate.
     #[arg(long)]
     path: String,
     /// Optional existing model associated with the route.
     #[arg(long)]
     resource: Option<String>,
+    /// Reuse the model's SQL CRUD. Method and JSON contract are inferred.
+    #[arg(long, value_enum, requires = "resource")]
+    action: Option<RouteAction>,
     /// Extract a JSON request body (POST, PUT, PATCH or DELETE).
     #[arg(long)]
     json_body: bool,
@@ -251,10 +257,14 @@ fn execute(command: Command) -> Result<()> {
         } => {
             let route = CustomRoute {
                 name: args.name,
-                method: args.method.to_uppercase(),
+                method: args
+                    .method
+                    .map(|m| m.to_uppercase())
+                    .unwrap_or_else(|| args.action.map_or("GET", RouteAction::method).into()),
                 path: args.path,
                 resource: args.resource,
-                json_body: args.json_body,
+                json_body: args.json_body || args.action.is_some_and(RouteAction::json_body),
+                action: args.action,
             };
             if !args.yes && !args.dry_run {
                 generation::add_route(
@@ -264,9 +274,11 @@ fn execute(command: Command) -> Result<()> {
                     &args.cache.path(),
                     true,
                 )?;
-                wizard::confirm(
-                    "Créer cette route à compléter dans l’éditeur ? Aucune migration SQL.",
-                )?;
+                wizard::confirm(if route.action.is_some() {
+                    "Créer cette route reliée au CRUD du modèle ? Aucune nouvelle table."
+                } else {
+                    "Créer cette route à compléter dans l’éditeur ? Aucune migration SQL."
+                })?;
             }
             generation::add_route(
                 &args.project,
