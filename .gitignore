@@ -2,3 +2,6 @@
 src/templates/**/target/
 /rust
 /rust_api
+/my-api2/
+__pycache__/
+.DS_Store
