@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Package a native release binary with its license, README and SHA-256."""
-import argparse
+import platform
+import sys
 import hashlib
 import re
 from pathlib import Path
@@ -13,24 +14,29 @@ import zipfile
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--target', required=True, choices=[
-        'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc',
-        'aarch64-apple-darwin', 'x86_64-apple-darwin',
-    ])
-    args = parser.parse_args()
+    if len(sys.argv) != 1:
+        raise SystemExit('This script packages the current native platform; it takes no arguments.')
+    platforms = {
+        ('Linux', 'x86_64'): 'x86_64-unknown-linux-gnu',
+        ('Windows', 'AMD64'): 'x86_64-pc-windows-msvc',
+        ('Darwin', 'arm64'): 'aarch64-apple-darwin',
+        ('Darwin', 'x86_64'): 'x86_64-apple-darwin',
+    }
+    target = platforms.get((platform.system(), platform.machine()))
+    if target is None:
+        raise SystemExit('Unsupported native release platform')
     root = Path(__file__).resolve().parents[1]
     version = tomllib.loads((root / 'Cargo.toml').read_text())['package']['version']
-    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?', version):
+    if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?', version, re.ASCII):
         raise ValueError('Invalid release version')
     output_dir = root / 'dist'
-    suffix = '.exe' if 'windows' in args.target else ''
-    binary = root / 'target' / args.target / 'release' / ('miblo' + suffix)
+    suffix = '.exe' if 'windows' in target else ''
+    binary = root / 'target' / target / 'release' / ('miblo' + suffix)
     result = subprocess.run([str(binary), '--version'], check=True, capture_output=True, text=True)
     assert result.stdout.strip() == f'miblo {version}', result.stdout
     subprocess.run([str(binary), '--help'], check=True, stdout=subprocess.DEVNULL)
     output_dir.mkdir(parents=True, exist_ok=True)
-    stem = f'miblo-{version}-{args.target}'
+    stem = f'miblo-{version}-{target}'
     with tempfile.TemporaryDirectory(prefix='miblo-release-') as temp:
         bundle = Path(temp) / stem
         bundle.mkdir()
