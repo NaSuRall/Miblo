@@ -95,7 +95,7 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt
           rustup default stable
-          python -m pip install -r scripts/requirements-test.txt
+          python -m pip install --only-binary :all: --require-hashes -r scripts/requirements-test.txt
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |

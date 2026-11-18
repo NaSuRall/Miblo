@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import secrets
 import socket
 import subprocess
 import tempfile
@@ -53,6 +54,8 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
     data.mkdir()
     db_log = root / 'mysql.log'
     api_log = root / 'api.log'
+    db_password = secrets.token_hex(24)
+    db_env = dict(os.environ, MYSQL_ROOT_PASSWORD=db_password, MYSQL_PWD=db_password)
     db = api = None
     container = None
     try:
@@ -65,27 +68,31 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
             # existing database or expose the disposable test server publicly.
             container = subprocess.check_output([
                 'docker', 'run', '--detach', '--rm', '--publish', '127.0.0.1::3306',
-                '--env', 'MYSQL_ALLOW_EMPTY_PASSWORD=yes', '--env', 'MYSQL_ROOT_HOST=%',
+                '--env', 'MYSQL_ROOT_PASSWORD', '--env', 'MYSQL_ROOT_HOST=%',
                 'mysql:8.4', '--mysqlx=0',
-            ], text=True, timeout=300).strip()
+            ], text=True, timeout=300, env=db_env).strip()
             binding = subprocess.check_output(['docker', 'port', container, '3306/tcp'], text=True, timeout=30).strip()
             assert binding.startswith('127.0.0.1:'), binding
             db_port = int(binding.rsplit(':', 1)[1])
-            db_command = ['docker', 'exec', container, 'mysql', '--no-defaults', '--protocol=TCP', '-h127.0.0.1', '-uroot']
+            db_command = ['docker', 'exec', '--env', 'MYSQL_PWD', container, 'mysql', '--no-defaults', '--protocol=TCP', '-h127.0.0.1', '-uroot']
         else:
-            subprocess.run([mysqld, '--no-defaults', '--initialize-insecure', f'--datadir={data}', f'--log-error={db_log}'], check=True, timeout=90)
-            db = subprocess.Popen([mysqld, '--no-defaults', f'--datadir={data}', f'--port={db_port}', '--bind-address=127.0.0.1', '--mysqlx=0', f'--socket={root / "mysql.sock"}', f'--pid-file={root / "mysql.pid"}', f'--log-error={db_log}'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run([mysqld, '--no-defaults', '--initialize', f'--datadir={data}', f'--log-error={db_log}'], check=True, timeout=90)
+            init_file = root / 'initialize.sql'
+            init_file.write_text(f"ALTER USER 'root'@'localhost' IDENTIFIED BY '{db_password}';\n")
+            init_file.chmod(0o600)
+            db = subprocess.Popen([mysqld, '--no-defaults', f'--init-file={init_file}', f'--datadir={data}', f'--port={db_port}', '--bind-address=127.0.0.1', '--mysqlx=0', f'--socket={root / "mysql.sock"}', f'--pid-file={root / "mysql.pid"}', f'--log-error={db_log}'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             db_command = [mysql, '--no-defaults', '--protocol=TCP', '-h127.0.0.1', f'-P{db_port}', '-uroot']
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
             if db and db.poll() is not None: raise RuntimeError('Temporary MySQL exited')
-            probe = subprocess.run(db_command + ['-e', 'SELECT 1'], capture_output=True, timeout=10)
+            probe = subprocess.run(db_command + ['-e', 'SELECT 1'], capture_output=True, timeout=10, env=db_env)
             if probe.returncode == 0: break
             time.sleep(.2)
         else: raise RuntimeError('Temporary MySQL did not become ready')
+        database_url = f'mysql://root:{db_password}@127.0.0.1:{db_port}/miblo_smoke'
         project = root / 'api'
         subprocess.run([miblo, 'new', 'smoke-api', '--output', str(project), *template_args, '--resource', 'Product', '--field', 'title:string:unique', '--field', 'description:text?', '--field', 'price:float', '--field', 'quantity:int', '--field', 'active:bool', '--field', 'token:string:private', '--yes'], check=True, env=generation_env)
-        (project / '.env').write_text(f'DATABASE_URL=mysql://root@127.0.0.1:{db_port}/miblo_smoke\n')
+        (project / '.env').write_text(f'DATABASE_URL={database_url}\n')
         subprocess.run([miblo, 'db', 'init'], cwd=project, check=True, env=generation_env)
         subprocess.run([miblo, 'db', 'check'], cwd=project, check=True, env=generation_env)
         if args.remote:
@@ -111,7 +118,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
         subprocess.run(['cargo', 'test', '--locked', *cargo_args], cwd=project, check=True, timeout=300)
         subprocess.run(['cargo', 'build', '--locked', *cargo_args], cwd=project, check=True, timeout=300)
         target = args.target_dir.resolve() if args.target_dir else project / 'target'
-        env = dict(generation_env, DATABASE_URL=f'mysql://root@127.0.0.1:{db_port}/miblo_smoke', SERVER_PORT=str(api_port), SERVER_ADDRESS='127.0.0.1')
+        env = dict(generation_env, DATABASE_URL=database_url, SERVER_PORT=str(api_port), SERVER_ADDRESS='127.0.0.1')
         with api_log.open('w') as log:
             api = subprocess.Popen([str(target / 'debug/smoke-api')], cwd=project, env=env, stdout=log, stderr=log)
         base = f'http://127.0.0.1:{api_port}'
@@ -180,7 +187,10 @@ with tempfile.TemporaryDirectory(prefix='miblo-smoke-', dir='/private/tmp' if Pa
         if container:
             subprocess.run(['docker', 'logs', '--tail', '100', container], timeout=30)
         for path in [db_log, api_log]:
-            if path.exists(): print(path.name + ':\n' + path.read_text()[-6000:])
+            if path.exists():
+                lines = path.read_text().splitlines()
+                text = '\n'.join(line for line in lines if 'temporary password' not in line)
+                print(path.name + ':\n' + text[-6000:].replace(db_password, '[redacted]'))
         raise
     finally:
         stop(api)

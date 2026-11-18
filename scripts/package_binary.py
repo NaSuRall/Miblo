@@ -2,6 +2,7 @@
 """Package a native release binary with its license, README and SHA-256."""
 import argparse
 import hashlib
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,17 +14,22 @@ import zipfile
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--target', required=True)
-    parser.add_argument('--output', type=Path, default=Path('dist'))
+    parser.add_argument('--target', required=True, choices=[
+        'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc',
+        'aarch64-apple-darwin', 'x86_64-apple-darwin',
+    ])
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     version = tomllib.loads((root / 'Cargo.toml').read_text())['package']['version']
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?', version):
+        raise ValueError('Invalid release version')
+    output_dir = root / 'dist'
     suffix = '.exe' if 'windows' in args.target else ''
     binary = root / 'target' / args.target / 'release' / ('miblo' + suffix)
     result = subprocess.run([str(binary), '--version'], check=True, capture_output=True, text=True)
     assert result.stdout.strip() == f'miblo {version}', result.stdout
     subprocess.run([str(binary), '--help'], check=True, stdout=subprocess.DEVNULL)
-    args.output.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     stem = f'miblo-{version}-{args.target}'
     with tempfile.TemporaryDirectory(prefix='miblo-release-') as temp:
         bundle = Path(temp) / stem
@@ -31,12 +37,12 @@ def main():
         for source in (binary, root / 'README.md', root / 'LICENSE', root / 'CHANGELOG.md'):
             shutil.copy2(source, bundle / source.name)
         if suffix:
-            archive = args.output / f'{stem}.zip'
+            archive = output_dir / f'{stem}.zip'
             with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as output:
                 for file in sorted(bundle.iterdir()):
                     output.write(file, f'{stem}/{file.name}')
         else:
-            archive = args.output / f'{stem}.tar.gz'
+            archive = output_dir / f'{stem}.tar.gz'
             with tarfile.open(archive, 'w:gz') as output:
                 output.add(bundle, arcname=stem)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()

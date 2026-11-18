@@ -14,12 +14,35 @@ import tempfile
 import tomllib
 
 
+MANIFEST = 'Cargo.toml'
+
 def run(arguments, *, cwd, env, capture=False):
     print('+', ' '.join(map(str, arguments)), flush=True)
     return subprocess.run(
         list(map(str, arguments)), cwd=cwd, env=env, check=True,
         text=True, capture_output=capture, timeout=1200,
     )
+
+
+def extract_crate(archive, root, prefix):
+    with tarfile.open(archive, 'r:gz') as crate:
+        members = crate.getmembers()
+        names = set()
+        for member in members:
+            parts = Path(member.name).parts
+            if not parts or parts[0] != prefix or '..' in parts or not (member.isfile() or member.isdir()):
+                raise AssertionError(f'Unexpected archive entry: {member.name}')
+            relative = '/'.join(parts[1:])
+            names.add(relative)
+            if relative and not (relative.startswith(('src/', 'tests/')) or relative in {
+                MANIFEST, 'Cargo.toml.orig', 'Cargo.lock', 'README.md',
+                'LICENSE', 'CHANGELOG.md', '.cargo_vcs_info.json',
+            }):
+                raise AssertionError(f'Unwanted file in crate: {relative}')
+        required = {MANIFEST, 'Cargo.lock', 'src/main.rs', 'LICENSE', 'README.md', 'CHANGELOG.md'}
+        if not required <= names:
+            raise AssertionError(f'Missing package files: {required - names}')
+        crate.extractall(root / 'source', filter='data')
 
 
 def main():
@@ -30,7 +53,7 @@ def main():
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[1]
     target = args.target_dir.resolve()
-    package = tomllib.loads((repo / 'Cargo.toml').read_text(encoding='utf-8'))['package']
+    package = tomllib.loads((repo / MANIFEST).read_text(encoding='utf-8'))['package']
     name, version = package['name'], package['version']
     prefix = f'{name}-{version}'
     env = dict(os.environ)
@@ -44,24 +67,7 @@ def main():
     archive = target / 'package' / f'{prefix}.crate'
     with tempfile.TemporaryDirectory(prefix='miblo install ') as temporary:
         root = Path(temporary).resolve()
-        with tarfile.open(archive, 'r:gz') as crate:
-            members = crate.getmembers()
-            names = set()
-            for member in members:
-                parts = Path(member.name).parts
-                if not parts or parts[0] != prefix or '..' in parts or not (member.isfile() or member.isdir()):
-                    raise AssertionError(f'Unexpected archive entry: {member.name}')
-                relative = '/'.join(parts[1:])
-                names.add(relative)
-                if relative and not (relative.startswith(('src/', 'tests/')) or relative in {
-                    'Cargo.toml', 'Cargo.toml.orig', 'Cargo.lock', 'README.md',
-                    'LICENSE', 'CHANGELOG.md', '.cargo_vcs_info.json',
-                }):
-                    raise AssertionError(f'Unwanted file in crate: {relative}')
-            required = {'Cargo.toml', 'Cargo.lock', 'src/main.rs', 'LICENSE', 'README.md', 'CHANGELOG.md'}
-            if not required <= names:
-                raise AssertionError(f'Missing package files: {required - names}')
-            crate.extractall(root / 'source', filter='data')
+        extract_crate(archive, root, prefix)
         source = root / 'source' / prefix
         install = root / 'installation'
         work = root / 'workspace'
