@@ -192,7 +192,9 @@ async fn mysql(url: &str) -> Result<Vec<Table>> {
     let mut connection = sqlx::MySqlConnection::connect_with(&options)
         .await
         .map_err(|_| anyhow::anyhow!("Connexion MySQL impossible ; vérifie la base avec b"))?;
-    let names: Vec<String> = sqlx::query_scalar("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' AND TABLE_NAME != '_sqlx_migrations' ORDER BY TABLE_NAME LIMIT 501")
+    // MySQL 8.4 can expose metadata names as VARBINARY; request text explicitly,
+    // just as for the column and foreign-key metadata below.
+    let names: Vec<String> = sqlx::query_scalar("SELECT CAST(TABLE_NAME AS CHAR) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' AND TABLE_NAME != '_sqlx_migrations' ORDER BY TABLE_NAME LIMIT 501")
         .fetch_all(&mut connection).await?;
     ensure!(names.len() <= 500, "Le schéma dépasse 500 tables");
     let mut tables = Vec::new();

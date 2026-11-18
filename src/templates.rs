@@ -175,7 +175,10 @@ impl Pack {
         for name in names(manifest.schema_version) {
             let file = path.join(name);
             ensure!(
-                file.symlink_metadata()?.file_type().is_file(),
+                file.symlink_metadata()
+                    .with_context(|| format!("Cannot read template file: {name}"))?
+                    .file_type()
+                    .is_file(),
                 "Template must be a regular file: {name}"
             );
             ensure!(

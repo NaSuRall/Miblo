@@ -34,6 +34,7 @@ parser.add_argument('--request-capture-json', type=Path)
 parser.add_argument('--schema-capture-json', type=Path)
 parser.add_argument('--edit-capture-json', type=Path)
 parser.add_argument('--api-target-dir', type=Path, help='Build and test real SQLite CRUD routes in the TUI')
+parser.add_argument('--cargo-offline', action='store_true', help='Use only cached Rust dependencies')
 args = parser.parse_args()
 
 class Terminal:
@@ -242,6 +243,11 @@ with tempfile.TemporaryDirectory(prefix='miblo-tui-') as tmp:
         ui.send(':check\r'); ui.wait('Test fixture: cargo check succeeded'); ui.wait('Aucune action en cours')
         ui.send('n'); ui.wait('Nom de la nouvelle API'); ui.send('\x1b'); ui.wait_absent('Nom de la nouvelle API')
         assert not (checkout / 'my-api').exists()
+        if args.api_target_dir:
+            # Resolve/build once outside the UI timeout on a fresh CI runner.
+            subprocess.run([real_cargo, 'build', '--locked', *(['--offline'] if args.cargo_offline else []),
+                            '--target-dir', str(args.api_target_dir.resolve())],
+                           cwd=project, env=env, check=True, timeout=600)
         ui.send('r'); ui.wait('API en cours' if args.api_target_dir else 'API ne répond pas', timeout=120)
         first_pid = int((root / 'api-child.pid').read_text())
         if args.api_target_dir:

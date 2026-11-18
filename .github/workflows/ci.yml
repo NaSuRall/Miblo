@@ -1,14 +1,114 @@
-name: CLI checks
-on: [push, pull_request]
+name: Beta checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'
+
 permissions:
   contents: read
+
+concurrency:
+  group: beta-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+  PYTHONUTF8: '1'
+
 jobs:
   check:
-    runs-on: ubuntu-latest
+    name: CLI and installation (${{ matrix.os }}, Rust ${{ matrix.rust }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            rust: stable
+          - os: macos-latest
+            rust: stable
+          - os: windows-2022
+            rust: stable
+          - os: ubuntu-24.04
+            rust: '1.88.0'
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - name: Install stable Rust
-        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
-      - run: cargo +stable fmt --check
-      - run: cargo +stable clippy --locked --all-targets -- -D warnings
-      - run: cargo +stable test --locked
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install Rust and generation prerequisites
+        run: |
+          rustup toolchain install '${{ matrix.rust }}' --profile minimal --component rustfmt --component clippy
+          rustup default '${{ matrix.rust }}'
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+            target
+          key: beta-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '.github/workflows/ci.yml') }}
+      - name: Formatting and lints
+        if: matrix.os == 'ubuntu-24.04' && matrix.rust == 'stable'
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+      - name: Build the CLI and run unit/integration tests
+        run: |
+          cargo build --locked
+          cargo test --locked --all-targets
+      - name: Install the exact crate and generate without local templates
+        run: python -u scripts/check_install.py --target-dir target/beta-check
+      - name: Keep the tested crate for review (no publication)
+        if: matrix.os == 'ubuntu-24.04' && matrix.rust == 'stable'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tested-crate
+          path: target/beta-check/package/*.crate
+          if-no-files-found: error
+          retention-days: 14
+
+  generated:
+    name: Generated APIs and terminal interface
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Check out immutable template fixtures (including legacy packs)
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: NaSuRall/miblo_templates
+          ref: c9d28668970e7047b7182f6fd03e5ce2d432a57d # templates v0.6.0
+          path: template-packs
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install Rust and terminal-test dependencies
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+          python -m pip install --only-binary :all: --require-hashes -r scripts/requirements-test.txt
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+            target
+          key: generated-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'template-packs/**/Cargo.lock.hbs', '.github/workflows/ci.yml') }}
+      - run: cargo build --locked
+      - name: SQLite CRUD, relations and data-preserving model changes
+        run: python -u scripts/smoke_sqlite.py --miblo target/debug/miblo --templates template-packs/rust_sqlite_template_v4 --target-dir target/generated
+      - name: Legacy models with current routes and templates
+        run: python -u scripts/smoke_sqlite.py --miblo target/debug/miblo --templates template-packs/rust_sqlite_template_v4 --legacy-templates template-packs/rust_sqlite_template_v1 --target-dir target/generated
+      - name: MySQL 8.4 in a disposable container
+        run: python -u scripts/smoke_mysql.py --miblo target/debug/miblo --templates template-packs/rust_template_v4 --docker --target-dir target/generated
+      - name: Real terminal flow, generated API and HTTP forms
+        run: python -u scripts/smoke_tui.py --miblo target/debug/miblo --templates template-packs/rust_sqlite_template_v4 --database sqlite --api-target-dir target/generated

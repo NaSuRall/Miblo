@@ -23,6 +23,7 @@ source.add_argument('--templates', type=Path)
 source.add_argument('--remote', action='store_true')
 parser.add_argument('--target-dir', type=Path, required=True)
 parser.add_argument('--legacy-templates', type=Path, help='Start with an old local pack, then update before adding the remaining models')
+parser.add_argument('--cargo-offline', action='store_true', help='Use only cached Rust dependencies')
 args = parser.parse_args()
 miblo = str(args.miblo.resolve())
 target = args.target_dir.resolve()
@@ -54,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix='miblo-sqlite-', dir='/private/tmp' if P
     def cli(*arguments):
         subprocess.run([miblo, *arguments], cwd=project if project.exists() else root, env=env, check=True)
     def cargo(action):
-        subprocess.run(['cargo', action, '--locked', '--offline', '--target-dir', str(target)], cwd=project, env=env, check=True, timeout=300)
+        subprocess.run(['cargo', action, '--locked', *(['--offline'] if args.cargo_offline else []), '--target-dir', str(target)], cwd=project, env=env, check=True, timeout=600)
     def request(method, path, value=None, expected=200):
         body = None if value is None else json.dumps(value).encode()
         req = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=body, method=method, headers={'Content-Type':'application/json'})
