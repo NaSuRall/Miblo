@@ -288,9 +288,12 @@ impl Pack {
         };
         ensure!(
             pack.lock.fingerprint == lock.fingerprint && pack.lock.version == lock.version,
-            "Le template a changé depuis la création du projet.\nVersion attendue : {} ; version trouvée : {}.\nPour créer une route ou un modèle : touche u → GitHub Releases, ou miblo template update.\nLes modèles existants gardent leur template d’origine : restaure sa version exacte avant de les modifier. Aucun fichier du projet n’a été modifié.",
-            lock.version,
-            pack.lock.version,
+            trf!(
+                "Template changed since project creation.\nExpected version: {}; found: {}.\nTo create a route or model: u → GitHub Releases, or miblo template update.\nExisting models keep their original template: restore its exact version before editing them. No project files were changed.",
+                "Le template a changé depuis la création du projet.\nVersion attendue : {} ; version trouvée : {}.\nPour créer une route ou un modèle : touche u → GitHub Releases, ou miblo template update.\nLes modèles existants gardent leur template d’origine : restaure sa version exacte avant de les modifier. Aucun fichier du projet n’a été modifié.",
+                lock.version,
+                pack.lock.version,
+            )
         );
         Ok(pack)
     }

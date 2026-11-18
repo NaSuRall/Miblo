@@ -9,6 +9,8 @@ fn cli(args: &[&str], dir: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_miblo"))
         .args(args)
         .current_dir(dir)
+        .env("MIBLO_LANGUAGE", "en")
+        .env("MIBLO_CONFIG_DIR", dir.join("user-preferences"))
         .env_remove("MIBLO_TEMPLATE_DIR")
         .env_remove("MIBLO_TEMPLATE_BASE_URL")
         .env_remove("DATABASE_URL")
@@ -1023,7 +1025,7 @@ fn sqlite_generates_and_migrates_tables_without_manual_configuration() {
     let root = dir.path().join("sample");
     assert!(root.join(".env").is_file());
     assert!(!root.join("compose.yaml").exists());
-    failure(cli(&["db", "check"], &root), "Connexion SQLite impossible");
+    failure(cli(&["db", "check"], &root), "Cannot connect to SQLite");
     assert!(
         !root.join("miblo.sqlite").exists(),
         "check must not create the database"
@@ -1231,7 +1233,7 @@ fn custom_routes_preserve_code_migrations_and_model_evolution() {
             &["route", "add", "extra", "--path", "/extra", "--yes"],
             &root,
         ),
-        "registre",
+        "registry",
     );
     assert_eq!(tree(&root), before);
 }
@@ -1349,7 +1351,7 @@ fn model_routes_require_capable_templates_and_preserve_models_and_migrations() {
     assert_eq!(tree(&root), before);
     let output = success(cli(&args, &root));
     let message = String::from_utf8(output.stdout).unwrap();
-    assert!(message.contains("reliés automatiquement") && !message.contains("501"));
+    assert!(message.contains("connected automatically") && !message.contains("501"));
     let alias = root.join("src/resources/custom_routes/members");
     assert!(
         fs::read_to_string(alias.join("handlers.rs"))

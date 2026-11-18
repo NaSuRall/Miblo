@@ -94,18 +94,28 @@ pub fn inspect(root: &Path) -> Result<Schema> {
             }
         })
         .await
-        .context("Lecture du schéma : délai dépassé (5 s)")?
+        .context(tr!(
+            "Schema read timed out (5 s)",
+            "Lecture du schéma : délai dépassé (5 s)"
+        ))?
     })?;
     Ok(Schema { database, tables })
 }
 
 async fn sqlite(root: &Path, url: &str) -> Result<Vec<Table>> {
-    let mut options = sqlx::sqlite::SqliteConnectOptions::from_str(url)
-        .map_err(|_| anyhow::anyhow!("Configuration SQLite invalide"))?;
+    let mut options = sqlx::sqlite::SqliteConnectOptions::from_str(url).map_err(|_| {
+        anyhow::anyhow!(trf!(
+            "Invalid SQLite configuration",
+            "Configuration SQLite invalide"
+        ))
+    })?;
     let file = options.get_filename().to_path_buf();
     ensure!(
         file != Path::new(":memory:"),
-        "Le schéma nécessite un fichier SQLite persistant"
+        trf!(
+            "The schema requires a persistent SQLite file",
+            "Le schéma nécessite un fichier SQLite persistant"
+        )
     );
     let file = if file.is_absolute() {
         file
@@ -115,7 +125,10 @@ async fn sqlite(root: &Path, url: &str) -> Result<Vec<Table>> {
     ensure!(file.is_file(), "Base SQLite absente : initialise-la avec b");
     ensure!(
         !file.symlink_metadata()?.file_type().is_symlink(),
-        "Lien symbolique SQLite refusé"
+        trf!(
+            "SQLite symbolic links are not allowed",
+            "Lien symbolique SQLite refusé"
+        )
     );
     options = options
         .filename(file)
@@ -125,10 +138,21 @@ async fn sqlite(root: &Path, url: &str) -> Result<Vec<Table>> {
         .disable_statement_logging();
     let mut connection = sqlx::SqliteConnection::connect_with(&options)
         .await
-        .map_err(|_| anyhow::anyhow!("Connexion SQLite impossible"))?;
+        .map_err(|_| {
+            anyhow::anyhow!(trf!(
+                "Cannot connect to SQLite",
+                "Connexion SQLite impossible"
+            ))
+        })?;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*' AND name != '_sqlx_migrations' ORDER BY name LIMIT 501")
         .fetch_all(&mut connection).await?;
-    ensure!(names.len() <= 500, "Le schéma dépasse 500 tables");
+    ensure!(
+        names.len() <= 500,
+        trf!(
+            "The schema exceeds 500 tables",
+            "Le schéma dépasse 500 tables"
+        )
+    );
     let mut tables = Vec::new();
     for name in names {
         let rows = sqlx::query("SELECT name, type, \"notnull\", pk, dflt_value FROM pragma_table_xinfo(?) ORDER BY cid")
@@ -187,16 +211,32 @@ async fn sqlite(root: &Path, url: &str) -> Result<Vec<Table>> {
 
 async fn mysql(url: &str) -> Result<Vec<Table>> {
     let options = sqlx::mysql::MySqlConnectOptions::from_str(url)
-        .map_err(|_| anyhow::anyhow!("Configuration MySQL invalide"))?
+        .map_err(|_| {
+            anyhow::anyhow!(trf!(
+                "Invalid MySQL configuration",
+                "Configuration MySQL invalide"
+            ))
+        })?
         .disable_statement_logging();
     let mut connection = sqlx::MySqlConnection::connect_with(&options)
         .await
-        .map_err(|_| anyhow::anyhow!("Connexion MySQL impossible ; vérifie la base avec b"))?;
+        .map_err(|_| {
+            anyhow::anyhow!(trf!(
+                "Cannot connect to MySQL; check the database with b",
+                "Connexion MySQL impossible ; vérifie la base avec b"
+            ))
+        })?;
     // MySQL 8.4 can expose metadata names as VARBINARY; request text explicitly,
     // just as for the column and foreign-key metadata below.
     let names: Vec<String> = sqlx::query_scalar("SELECT CAST(TABLE_NAME AS CHAR) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' AND TABLE_NAME != '_sqlx_migrations' ORDER BY TABLE_NAME LIMIT 501")
         .fetch_all(&mut connection).await?;
-    ensure!(names.len() <= 500, "Le schéma dépasse 500 tables");
+    ensure!(
+        names.len() <= 500,
+        trf!(
+            "The schema exceeds 500 tables",
+            "Le schéma dépasse 500 tables"
+        )
+    );
     let mut tables = Vec::new();
     for name in names {
         let rows = sqlx::query("SELECT CAST(c.COLUMN_NAME AS CHAR) AS COLUMN_NAME, CAST(c.COLUMN_TYPE AS CHAR) AS COLUMN_TYPE, CAST(c.IS_NULLABLE AS CHAR) AS IS_NULLABLE, CAST(c.COLUMN_DEFAULT AS CHAR) AS COLUMN_DEFAULT, CAST(COALESCE(k.ORDINAL_POSITION, 0) AS SIGNED) AS pk FROM information_schema.COLUMNS c LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.CONSTRAINT_NAME='PRIMARY' WHERE c.TABLE_SCHEMA=DATABASE() AND c.TABLE_NAME=? ORDER BY c.ORDINAL_POSITION")

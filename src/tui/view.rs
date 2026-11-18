@@ -120,8 +120,11 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     }
     if area.width < 70 || area.height < 20 {
         frame.render_widget(
-            Paragraph::new("MIBLO\nAgrandis le terminal à au moins 70 × 20.\nq pour quitter")
-                .style(Style::default().fg(colors.accent)),
+            Paragraph::new(tr!(
+                "MIBLO\nResize the terminal to at least 70 × 20.\nq to quit",
+                "MIBLO\nAgrandis le terminal à au moins 70 × 20.\nq pour quitter"
+            ))
+            .style(Style::default().fg(colors.accent)),
             area,
         );
         return;
@@ -137,7 +140,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let project = app
         .project
         .as_ref()
-        .map_or("Bienvenue", |p| p.name.as_str());
+        .map_or(tr!("Welcome", "Bienvenue"), |p| p.name.as_str());
     let title = Line::from(vec![
         Span::styled(
             " MIBLO ",
@@ -157,13 +160,26 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             Style::default().fg(colors.muted),
         ),
     ]);
-    frame.render_widget(Paragraph::new(title), layout[0]);
+    let header = Layout::horizontal([Constraint::Min(0), Constraint::Length(23)]).split(layout[0]);
+    frame.render_widget(Paragraph::new(title), header[0]);
+    frame.render_widget(
+        Paragraph::new(format!(
+            "{} · L Language/Langue",
+            crate::i18n::current().code().to_ascii_uppercase()
+        ))
+        .right_aligned()
+        .style(Style::default().fg(colors.accent)),
+        header[1],
+    );
     let statuses = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(layout[1]);
     badge(
         frame,
         statuses[0],
-        " État API · r lancer / s arrêter ",
+        tr!(
+            " API status · r start / s stop ",
+            " État API · r lancer / s arrêter "
+        ),
         app.api_badge(),
         &app.base_url,
         colors,
@@ -172,8 +188,8 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let db = if app.project.is_none() {
         status::Badge::new(
             status::Tone::Neutral,
-            "Aucune base sélectionnée",
-            "Crée ou ouvre une API",
+            tr!("No database selected", "Aucune base sélectionnée"),
+            tr!("Create or open an API", "Crée ou ouvre une API"),
         )
     } else {
         status::database_badge(&app.monitor.database, app.db_job.is_some())
@@ -181,9 +197,12 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     badge(
         frame,
         statuses[1],
-        " État BDD · b configurer / migrer ",
+        tr!(
+            " DB status · b configure / migrate ",
+            " État BDD · b configurer / migrer "
+        ),
         db,
-        &app.status,
+        &app.status.label(),
         colors,
         app.theme == 2,
     );
@@ -219,7 +238,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_stateful_widget(
         List::new(resources)
             .block(panel(
-                " Modèles · m modifier ",
+                tr!(" Models · m edit ", " Modèles · m modifier "),
                 app.focus == Focus::Resources,
                 colors,
             ))
@@ -247,7 +266,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_stateful_widget(
         List::new(files)
             .block(panel(
-                " Fichiers · e éditeur ",
+                tr!(" Files · e editor ", " Fichiers · e éditeur "),
                 app.focus == Focus::Files,
                 colors,
             ))
@@ -257,7 +276,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         &mut file_state,
     );
     if app.project.is_none() {
-        frame.render_widget(Paragraph::new("\n  Ton API, au même endroit.\n\n  n créer une API · o ouvrir un projet\n  a ajouter un modèle / une table\n  b configurer la base / les migrations\n\n  Espace : actions · ? : aide\n  Flèches / j/k : naviguer · Tab : panneau suivant").wrap(Wrap { trim: false }).block(panel(" Atelier API ", false, colors)), columns[1]);
+        frame.render_widget(Paragraph::new(tr!("\n  Your API, in one workspace.\n\n  n create an API · o open a project\n  a add a model / table\n  b configure database / migrations\n\n  Space: actions · ?: help · L: language\n  Arrows / j/k: navigate · Tab: next panel", "\n  Ton API, au même endroit.\n\n  n créer une API · o ouvrir un projet\n  a ajouter un modèle / une table\n  b configurer la base / les migrations\n\n  Espace : actions · ? : aide · L : langue\n  Flèches / j/k : naviguer · Tab : panneau suivant")).wrap(Wrap { trim: false }).block(panel(tr!(" API workspace ", " Atelier API "), false, colors)), columns[1]);
     } else if app.show_schema {
         draw_schema(frame, app, columns[1], colors);
     } else {
@@ -281,7 +300,10 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(
             List::new(routes)
                 .block(panel(
-                    " Routes · g créer · x tester · e code ",
+                    tr!(
+                        " Routes · g create · x test · e code ",
+                        " Routes · g créer · x tester · e code "
+                    ),
                     app.focus == Focus::Routes,
                     colors,
                 ))
@@ -291,7 +313,10 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             &mut route_state,
         );
         let response_title = if app.tester.pending {
-            Line::from(" Réponse · requête en cours… ")
+            Line::from(tr!(
+                " Response · request in progress… ",
+                " Réponse · requête en cours… "
+            ))
         } else if let Some(reply) = &app.tester.reply {
             let (tone, label) = match reply.status {
                 Some(code) => (
@@ -304,14 +329,21 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
                     },
                     format!("HTTP {code}"),
                 ),
-                None => (status::Tone::Error, "Erreur réseau".into()),
+                None => (
+                    status::Tone::Error,
+                    tr!("Network error", "Erreur réseau").into(),
+                ),
             };
             Line::from(Span::styled(
-                format!(" Réponse · ● {label} · {} ms ", reply.elapsed_ms),
+                trf!(
+                    " Response · ● {label} · {} ms ",
+                    " Réponse · ● {label} · {} ms ",
+                    reply.elapsed_ms
+                ),
                 Style::default().fg(tone_color(tone, app.theme == 2)),
             ))
         } else {
-            Line::from(" Réponse HTTP ")
+            Line::from(tr!(" HTTP response ", " Réponse HTTP "))
         };
         let mut response = Vec::new();
         if let Some(reply) = &app.tester.reply {
@@ -332,12 +364,24 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             );
         } else {
             response.push(Line::from(if app.tester.pending {
-                "Envoi en cours · délai maximum 10 s"
+                tr!(
+                    "Sending · timeout 10 s",
+                    "Envoi en cours · délai maximum 10 s"
+                )
             } else {
-                "Sélectionne une route puis x ou Entrée."
+                tr!(
+                    "Select a route, then x or Enter.",
+                    "Sélectionne une route puis x ou Entrée."
+                )
             }));
-            response.push(Line::from("f : choisir méthode, chemin et champs"));
-            response.push(Line::from("Les écritures demandent confirmation."));
+            response.push(Line::from(tr!(
+                "f: choose method, path and fields",
+                "f : choisir méthode, chemin et champs"
+            )));
+            response.push(Line::from(tr!(
+                "Writes require confirmation.",
+                "Les écritures demandent confirmation."
+            )));
         }
         frame.render_widget(
             Paragraph::new(response).block(panel(
@@ -374,7 +418,10 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
                 .collect();
             frame.render_widget(
                 Paragraph::new(lines).block(panel(
-                    format!(" Aperçu · {filename} · e éditeur · v masquer "),
+                    trf!(
+                        " Preview · {filename} · e editor · v hide ",
+                        " Aperçu · {filename} · e éditeur · v masquer "
+                    ),
                     app.focus == Focus::Code,
                     colors,
                 )),
@@ -391,14 +438,21 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         .take(height)
         .map(|line| Line::from(line.clone()))
         .collect();
-    let action = app
-        .job
-        .as_ref()
-        .map_or("Aucune action en cours", |p| p.label.as_str());
+    let action =
+        app.job.as_ref().map_or(
+            tr!("No action running", "Aucune action en cours"),
+            |p| match app.job_kind {
+                Some(kind) => kind.label(),
+                None => p.label.as_str(),
+            },
+        );
     let count = app.project.as_ref().map_or(0, |p| p.resources.len());
     frame.render_widget(
         Paragraph::new(logs).block(panel(
-            format!(" Logs · {count} ressource(s) · {action} "),
+            trf!(
+                " Logs · {count} model(s) · {action} ",
+                " Logs · {count} ressource(s) · {action} "
+            ),
             app.focus == Focus::Logs,
             colors,
         )),
@@ -408,7 +462,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         Paragraph::new(vec![
             Line::from(app.notice.as_str()),
             Line::from(Span::styled(
-                "Tab panneaux · g route · d schéma · x tester · b BDD · e éditeur · v code · ? aide",
+                tr!("Tab panels · g route · d schema · x test · b DB · e editor · v code · L language · ? help", "Tab panneaux · g route · d schéma · x tester · b BDD · e éditeur · v code · L langue · ? aide"),
                 Style::default().fg(colors.muted),
             )),
         ])
@@ -428,16 +482,29 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
 fn draw_schema(frame: &mut Frame, app: &App, area: Rect, colors: Palette) {
     let rows = Layout::vertical([Constraint::Length(3), Constraint::Min(4)]).split(area);
     let source = if app.schema.planned {
-        "Schéma déclaré · modèles du projet"
+        tr!(
+            "Declared schema · project models",
+            "Schéma déclaré · modèles du projet"
+        )
     } else {
-        "Schéma réel · lecture de la base"
+        tr!(
+            "Live schema · reading database",
+            "Schéma réel · lecture de la base"
+        )
     };
     let info = if app.schema.planned {
-        "PK id automatique · b applique les migrations · p revient à la base réelle".into()
+        tr!(
+            "Automatic id PK · b applies migrations · p returns to the live database",
+            "PK id automatique · b applique les migrations · p revient à la base réelle"
+        )
+        .into()
     } else if app.schema.loading() {
-        "Lecture du schéma en cours…".into()
+        tr!("Reading schema…", "Lecture du schéma en cours…").into()
     } else if let Some(error) = &app.schema.error {
-        format!("{error} · p : voir les modèles déclarés")
+        trf!(
+            "{error} · p: view declared models",
+            "{error} · p : voir les modèles déclarés"
+        )
     } else {
         app.schema
             .actual
@@ -454,7 +521,10 @@ fn draw_schema(frame: &mut Frame, app: &App, area: Rect, colors: Palette) {
             )),
             Line::from(clean(&info)),
             Line::from(Span::styled(
-                "p réel / déclaré · F5 actualiser · d retour aux routes",
+                tr!(
+                    "p live / declared · F5 refresh · d back to routes",
+                    "p réel / déclaré · F5 actualiser · d retour aux routes"
+                ),
                 Style::default().fg(colors.muted),
             )),
         ]),
@@ -509,7 +579,10 @@ fn draw_schema(frame: &mut Frame, app: &App, area: Rect, colors: Palette) {
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(panel(
-                " Colonnes · clés · relations ",
+                tr!(
+                    " Columns · keys · relationships ",
+                    " Colonnes · clés · relations "
+                ),
                 app.focus == Focus::Schema,
                 colors,
             )),
@@ -600,7 +673,10 @@ fn draw_dialog(frame: &mut Frame, dialog: &mut forms::Dialog, colors: Palette) {
                     Line::from(format!(" {shown}")),
                     Line::from(""),
                     Line::from(Span::styled(
-                        " Entrée : valider • Ctrl+U : effacer • Échap : annuler",
+                        tr!(
+                            " Enter: confirm • Ctrl+U: clear • Escape: cancel",
+                            " Entrée : valider • Ctrl+U : effacer • Échap : annuler"
+                        ),
                         Style::default().fg(colors.muted),
                     )),
                 ])
@@ -655,15 +731,18 @@ fn draw_dialog(frame: &mut Frame, dialog: &mut forms::Dialog, colors: Palette) {
                 &mut state,
             );
             frame.render_widget(
-                Paragraph::new("↑ ↓ choisir • Entrée valider • Échap annuler • Pg↑/↓ détails")
-                    .style(Style::default().fg(colors.muted)),
+                Paragraph::new(tr!(
+                    "↑ ↓ select • Enter confirm • Escape cancel • Pg↑/↓ details",
+                    "↑ ↓ choisir • Entrée valider • Échap annuler • Pg↑/↓ détails"
+                ))
+                .style(Style::default().fg(colors.muted)),
                 rows[2],
             );
         }
         Dialog::Options {
             items, selected, ..
         } => {
-            let block = panel(" Options du champ ", true, colors);
+            let block = panel(tr!(" Field options ", " Options du champ "), true, colors);
             let inner = block.inner(area);
             frame.render_widget(block, area);
             let rows = Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).split(inner);
@@ -684,14 +763,17 @@ fn draw_dialog(frame: &mut Frame, dialog: &mut forms::Dialog, colors: Palette) {
                 &mut state,
             );
             frame.render_widget(
-                Paragraph::new("Espace : cocher • Entrée : valider\nÉchap : annuler la ressource")
-                    .style(Style::default().fg(colors.muted)),
+                Paragraph::new(tr!(
+                    "Space: toggle • Enter: confirm\nEscape: cancel the model",
+                    "Espace : cocher • Entrée : valider\nÉchap : annuler la ressource"
+                ))
+                .style(Style::default().fg(colors.muted)),
                 rows[1],
             );
         }
         Dialog::Help => {
-            frame.render_widget(Paragraph::new("NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter • m modifier un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  g créer une route • x tester • f requête HTTP libre • v masquer le code\n  d schéma BDD • p réel/déclaré • u mettre à jour les templates\n  Espace   palette d’actions   • t changer le thème\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, model, run, stop, check, test\n  db, migrate, schema, templates, route-new, routes, request, code, edit, refresh\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer.")
-                .style(Style::default().fg(colors.foreground)).block(panel(" Aide Miblo ", true, colors)).wrap(Wrap { trim: false }), area);
+            frame.render_widget(Paragraph::new(tr!("NAVIGATION\n  Tab / Shift+Tab   switch panel\n  ↑ ↓ or j/k        navigate / scroll\n  Enter             open a file / directory / model\n  PageUp / PageDown scroll faster\n  h / l             scroll code horizontally\n\nACTIONS\n  n create • o open • a add • m edit model • b database\n  r start • s stop • c check • e editor\n  g create route • x test • f custom HTTP request • v hide code\n  d DB schema • p live/declared • u update templates\n  Space: actions • t: theme • L: Language / Langue\n  F5 refresh • q quit (stops the API started here)\n\nCOMMANDS WITH :\n  new, open [directory], add, model, run, stop, check, test\n  db, migrate, schema, templates, route-new, routes, request, code, edit, refresh\n  language / langue: choose English or French\n\nCode is read-only. VISUAL/EDITOR selects your editor.\nPress any key to close.", "NAVIGATION\n  Tab / Shift+Tab   changer de panneau\n  ↑ ↓ ou j/k        naviguer / défiler\n  Entrée            ouvrir un fichier / dossier / ressource\n  PageUp / PageDown défiler plus vite\n  h / l             défiler horizontalement dans le code\n\nACTIONS\n  n créer • o ouvrir • a ajouter • m modifier un modèle • b base de données\n  r lancer • s arrêter • c vérifier • e éditeur\n  g créer une route • x tester • f requête HTTP libre • v masquer le code\n  d schéma BDD • p réel/déclaré • u mettre à jour les templates\n  Espace: actions • t: thème • L: Language / Langue\n  F5 actualiser • q quitter (arrête l’API lancée ici)\n\nCOMMANDES AVEC :\n  new, open [dossier], add, model, run, stop, check, test\n  db, migrate, schema, templates, route-new, routes, request, code, edit, refresh\n  language / langue: choisir anglais ou français\n\nLe code est en lecture seule. VISUAL/EDITOR choisit l’éditeur.\nAppuie sur une touche pour fermer."))
+                .style(Style::default().fg(colors.foreground)).block(panel(tr!(" Miblo help ", " Aide Miblo "), true, colors)).wrap(Wrap { trim: false }), area);
         }
     }
 }

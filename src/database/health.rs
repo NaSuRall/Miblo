@@ -19,16 +19,25 @@ fn compare(migrator: &Migrator, applied: Applied, initialized: bool) -> Health {
     }
     for (version, checksum, success) in &applied {
         if !success {
-            return Health::Drift(format!("Migration {version} incomplète"));
+            return Health::Drift(trf!(
+                "Migration {version} is incomplete",
+                "Migration {version} incomplète"
+            ));
         }
         let Some(source) = migrator
             .iter()
             .find(|m| m.version == *version && m.migration_type.is_up_migration())
         else {
-            return Health::Drift(format!("Migration {version} absente du projet"));
+            return Health::Drift(trf!(
+                "Migration {version} is missing from the project",
+                "Migration {version} absente du projet"
+            ));
         };
         if source.checksum.as_ref() != checksum {
-            return Health::Drift(format!("Migration {version} modifiée après application"));
+            return Health::Drift(trf!(
+                "Migration {version} was modified after being applied",
+                "Migration {version} modifiée après application"
+            ));
         }
     }
     let pending = migrator
@@ -55,20 +64,20 @@ pub fn inspect(root: &Path) -> Health {
         runtime.block_on(async {
             let task = async {
                 let migrator = Migrator::new(root.join("migrations")).await
-                    .map_err(|_| anyhow::anyhow!("Fichiers de migration invalides"))?;
+                    .map_err(|_| anyhow::anyhow!(trf!("Invalid migration files", "Fichiers de migration invalides")))?;
                 match config.database() {
                     Database::Sqlite => {
                         let mut options = sqlx::sqlite::SqliteConnectOptions::from_str(&url)
-                            .map_err(|_| anyhow::anyhow!("Configuration SQLite invalide"))?;
+                            .map_err(|_| anyhow::anyhow!(trf!("Invalid SQLite configuration", "Configuration SQLite invalide")))?;
                         let file = options.get_filename().to_path_buf();
                         let file = if file.is_absolute() { file } else { root.join(file) };
                         if !file.exists() { return Ok(Health::Initialize); }
-                        ensure!(!file.symlink_metadata()?.file_type().is_symlink(), "Lien symbolique SQLite refusé");
+                        ensure!(!file.symlink_metadata()?.file_type().is_symlink(), trf!("SQLite symbolic links are not allowed", "Lien symbolique SQLite refusé"));
                         // Status checks never create a database or migration metadata.
                         options = options.filename(file).create_if_missing(false).read_only(true)
                             .busy_timeout(Duration::from_millis(500)).disable_statement_logging();
                         let mut connection = sqlx::SqliteConnection::connect_with(&options).await
-                            .map_err(|_| anyhow::anyhow!("Connexion SQLite impossible"))?;
+                            .map_err(|_| anyhow::anyhow!(trf!("Cannot connect to SQLite", "Connexion SQLite impossible")))?;
                         let initialized: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations'")
                             .fetch_one(&mut connection).await?;
                         let applied = if initialized > 0 {
@@ -81,12 +90,12 @@ pub fn inspect(root: &Path) -> Health {
                     }
                     Database::Mysql => {
                         let options = sqlx::mysql::MySqlConnectOptions::from_str(&url)
-                            .map_err(|_| anyhow::anyhow!("Configuration MySQL invalide"))?.disable_statement_logging();
+                            .map_err(|_| anyhow::anyhow!(trf!("Invalid MySQL configuration", "Configuration MySQL invalide")))?.disable_statement_logging();
                         let mut connection = match sqlx::MySqlConnection::connect_with(&options).await {
                             Ok(connection) => connection,
                             Err(sqlx::Error::Database(error)) if error.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
                                 .is_some_and(|error| error.number() == 1049) => return Ok(Health::Initialize),
-                            Err(_) => bail!("Connexion MySQL impossible"),
+                            Err(_) => bail!(trf!("Cannot connect to MySQL", "Connexion MySQL impossible")),
                         };
                         let initialized: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='_sqlx_migrations'")
                             .fetch_one(&mut connection).await?;
@@ -101,7 +110,7 @@ pub fn inspect(root: &Path) -> Health {
                 }
             };
             tokio::time::timeout(Duration::from_secs(2), task).await
-                .context("Base injoignable (délai dépassé)")?
+                .context(tr!("Database unreachable (timed out)", "Base injoignable (délai dépassé)"))?
         })
     })();
     match result {

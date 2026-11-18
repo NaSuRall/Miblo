@@ -51,42 +51,59 @@ impl Input {
                     } else {
                         self.value.len() <= 65535
                     },
-                    "{} : texte trop long",
-                    self.field.name
+                    trf!(
+                        "{}: text is too long",
+                        "{} : texte trop long",
+                        self.field.name
+                    )
                 );
                 Value::String(self.value.clone())
             }
-            FieldType::Int => json!(self.value.trim().parse::<i64>().with_context(|| format!(
+            FieldType::Int => json!(self.value.trim().parse::<i64>().with_context(|| trf!(
+                "{}: enter an integer or choose an existing row",
                 "{} : saisis un entier ou choisis une ligne existante",
                 self.field.name
             ))?),
             FieldType::Float => {
-                let number =
-                    self.value.trim().parse::<f64>().with_context(|| {
-                        format!("{} : saisis un nombre décimal", self.field.name)
-                    })?;
+                let number = self.value.trim().parse::<f64>().with_context(|| {
+                    trf!(
+                        "{}: enter a decimal number",
+                        "{} : saisis un nombre décimal",
+                        self.field.name
+                    )
+                })?;
                 ensure!(
                     number.is_finite(),
-                    "{} : nombre décimal invalide",
-                    self.field.name
+                    trf!(
+                        "{}: invalid decimal number",
+                        "{} : nombre décimal invalide",
+                        self.field.name
+                    )
                 );
                 json!(number)
             }
-            FieldType::Bool => json!(self.value.parse::<bool>().context("Choisis vrai ou faux")?),
+            FieldType::Bool => json!(
+                self.value
+                    .parse::<bool>()
+                    .context(tr!("Choose true or false", "Choisis vrai ou faux"))?
+            ),
         };
         Ok(value)
     }
     fn label(&self) -> String {
         let shown = match self.presence {
-            Presence::Omitted => "non envoyé".into(),
+            Presence::Omitted => tr!("not sent", "non envoyé").into(),
             Presence::Null => "NULL".into(),
             Presence::Value if self.field.private => "••••••".into(),
             Presence::Value if self.value.is_empty() && self.field.references.is_some() => {
-                "choisir une ligne existante".into()
+                tr!("choose an existing row", "choisir une ligne existante").into()
             }
-            Presence::Value if self.field.kind == FieldType::Bool => {
-                if self.value == "true" { "vrai" } else { "faux" }.into()
+            Presence::Value if self.field.kind == FieldType::Bool => if self.value == "true" {
+                tr!("true", "vrai")
+            } else {
+                tr!("false", "faux")
             }
+            .into(),
             Presence::Value => super::clean(&self.value),
         };
         format!(
@@ -98,7 +115,11 @@ impl Input {
             },
             self.field.name,
             type_name(self.field.kind),
-            if self.optional { "" } else { " · requis" },
+            if self.optional {
+                ""
+            } else {
+                tr!(" · required", " · requis")
+            },
             shown
         )
     }
@@ -173,13 +194,25 @@ impl Form {
                 .collect()
         });
         let note = if patch {
-            "Coche uniquement les champs à modifier ; les autres restent inchangés.".into()
+            tr!(
+                "Select only the fields to update; the others stay unchanged.",
+                "Coche uniquement les champs à modifier ; les autres restent inchangés."
+            )
+            .into()
         } else if flexible && resource.is_some() {
-            "Champs proposés depuis le modèle associé ; adapte-les au contrat de cette route (+ / Suppr).".into()
+            tr!("Fields suggested from the linked model; adapt them to this route's contract (+ / Delete).", "Champs proposés depuis le modèle associé ; adapte-les au contrat de cette route (+ / Suppr).").into()
         } else if flexible {
-            "Corps sans contrat déclaré : ajoute des champs avec +. Miblo construit le JSON.".into()
+            tr!(
+                "No declared body contract: add fields with +. Miblo builds the JSON.",
+                "Corps sans contrat déclaré : ajoute des champs avec +. Miblo construit le JSON."
+            )
+            .into()
         } else {
-            "Champs préremplis depuis le modèle. Tu peux envoyer ou modifier leurs valeurs.".into()
+            tr!(
+                "Fields prefilled from the model. Send the request or edit their values.",
+                "Champs préremplis depuis le modèle. Tu peux envoyer ou modifier leurs valeurs."
+            )
+            .into()
         };
         let lookups = references::start(project, &fields, base);
         let mut form = Self {
@@ -217,13 +250,19 @@ impl Form {
         for input in &self.fields {
             match input.presence {
                 Presence::Omitted => {
-                    ensure!(input.optional, "{} est obligatoire", input.field.name)
+                    ensure!(
+                        input.optional,
+                        trf!("{} is required", "{} est obligatoire", input.field.name)
+                    )
                 }
                 Presence::Null => {
                     ensure!(
                         input.field.nullable,
-                        "{} ne peut pas être NULL",
-                        input.field.name
+                        trf!(
+                            "{} cannot be NULL",
+                            "{} ne peut pas être NULL",
+                            input.field.name
+                        )
                     );
                     body.insert(input.field.name.clone(), Value::Null);
                 }
@@ -234,7 +273,10 @@ impl Form {
         }
         ensure!(
             !self.patch || !body.is_empty(),
-            "Choisis au moins un champ à modifier"
+            trf!(
+                "Select at least one field to update",
+                "Choisis au moins un champ à modifier"
+            )
         );
         let request = http::Request {
             method: self.request.method.clone(),
@@ -247,12 +289,12 @@ impl Form {
 
     fn rows(&self) -> Vec<String> {
         let mut rows = vec![
-            "▶ Envoyer la requête".into(),
-            format!("Chemin : {}", self.request.path),
+            tr!("▶ Send request", "▶ Envoyer la requête").into(),
+            trf!("Path: {}", "Chemin : {}", self.request.path),
         ];
         rows.extend(self.fields.iter().map(Input::label));
         if self.flexible {
-            rows.push("+ Ajouter un champ".into());
+            rows.push(tr!("+ Add a field", "+ Ajouter un champ").into());
         }
         rows
     }
@@ -286,7 +328,10 @@ impl Form {
                 if let Some(input) = self.fields.get_mut(self.selected - 2) {
                     ensure!(
                         input.optional,
-                        "Ce champ est obligatoire ; modifie sa valeur avec Entrée"
+                        trf!(
+                            "This field is required; edit its value with Enter",
+                            "Ce champ est obligatoire ; modifie sa valeur avec Entrée"
+                        )
                     );
                     input.presence = if input.presence == Presence::Omitted {
                         if input.field.nullable {
@@ -301,7 +346,13 @@ impl Form {
             }
             KeyCode::Char('n') if self.selected >= 2 => {
                 if let Some(input) = self.fields.get_mut(self.selected - 2) {
-                    ensure!(input.field.nullable, "Ce champ n’accepte pas NULL");
+                    ensure!(
+                        input.field.nullable,
+                        trf!(
+                            "This field does not accept NULL",
+                            "Ce champ n’accepte pas NULL"
+                        )
+                    );
                     input.presence = if input.presence == Presence::Null {
                         Presence::Value
                     } else {
@@ -427,13 +478,16 @@ impl Form {
                                     !name.is_empty()
                                         && name.len() <= 128
                                         && !name.chars().any(char::is_control),
-                                    "Indique le nom du champ"
+                                    trf!("Enter a field name", "Indique le nom du champ")
                                 );
                                 ensure!(
                                     !self.fields.iter().any(|i| i.field.name == name),
-                                    "Ce champ existe déjà"
+                                    trf!("This field already exists", "Ce champ existe déjà")
                                 );
-                                ensure!(self.fields.len() < 64, "Maximum : 64 champs");
+                                ensure!(
+                                    self.fields.len() < 64,
+                                    trf!("Maximum: 64 fields", "Maximum : 64 champs")
+                                );
                                 self.editor = Some(Editor::Type(name.into(), 0));
                             }
                             _ => unreachable!(),
@@ -481,7 +535,10 @@ impl Form {
             }
             _ => Vec::new(),
         };
-        rows.push((None, "Saisir un identifiant manuellement".into()));
+        rows.push((
+            None,
+            tr!("Enter an ID manually", "Saisir un identifiant manuellement").into(),
+        ));
         rows
     }
     fn reference_status(&self, index: usize) -> String {
@@ -497,14 +554,22 @@ impl Form {
             .unwrap_or_else(|e| e.into_inner())
             .get(reference)
         {
-            Some(Lookup::Loading) => format!("{reference} : chargement des lignes…"),
+            Some(Lookup::Loading) => trf!(
+                "{reference}: loading rows…",
+                "{reference} : chargement des lignes…"
+            ),
             Some(Lookup::Ready(rows)) if rows.is_empty() => {
-                format!("{reference} : aucune ligne. Crée d’abord une ligne dans cette table.")
+                trf!(
+                    "{reference}: no rows. Create a row in this table first.",
+                    "{reference} : aucune ligne. Crée d’abord une ligne dans cette table."
+                )
             }
-            Some(Lookup::Ready(_)) => format!(
+            Some(Lookup::Ready(_)) => trf!(
+                "{reference}: first available rows; you can enter another ID.",
                 "{reference} : premières lignes disponibles ; tu peux saisir un autre identifiant."
             ),
-            _ => format!(
+            _ => trf!(
+                "{reference}: list unavailable. Check the API or enter an existing ID.",
                 "{reference} : liste indisponible. Vérifie l’API ou saisis un identifiant existant."
             ),
         }
@@ -534,7 +599,7 @@ fn example(field: &Field, nonce: u64) -> String {
             if field.name.contains("email") {
                 format!("miblo{suffix}@example.test")
             } else {
-                format!("exemple{suffix}")
+                trf!("example{suffix}", "exemple{suffix}")
             }
         }
         FieldType::Int => {
@@ -556,11 +621,11 @@ fn example(field: &Field, nonce: u64) -> String {
 }
 fn type_name(kind: FieldType) -> &'static str {
     match kind {
-        FieldType::String => "texte",
-        FieldType::Text => "texte long",
-        FieldType::Int => "entier",
-        FieldType::Float => "décimal",
-        FieldType::Bool => "booléen",
+        FieldType::String => tr!("text", "texte"),
+        FieldType::Text => tr!("long text", "texte long"),
+        FieldType::Int => tr!("integer", "entier"),
+        FieldType::Float => tr!("decimal", "décimal"),
+        FieldType::Bool => tr!("boolean", "booléen"),
     }
 }
 
@@ -597,7 +662,11 @@ pub(super) fn draw(frame: &mut ratatui::Frame, form: &mut Form, colors: super::v
     frame.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" Préparer la requête · {} ", form.request.method))
+        .title(trf!(
+            " Prepare request · {} ",
+            " Préparer la requête · {} ",
+            form.request.method
+        ))
         .style(style)
         .border_style(Style::default().fg(accent));
     let inner = block.inner(area);
@@ -618,26 +687,40 @@ pub(super) fn draw(frame: &mut ratatui::Frame, form: &mut Form, colors: super::v
         rows[0],
     );
     let mut footer = if form.flexible {
-        "↑ ↓ choisir · Entrée modifier/envoyer · Espace inclure/exclure\nn : NULL · + : champ libre · Suppr : retirer · Échap annuler"
+        tr!("↑ ↓ select · Enter edit/send · Space include/omit\nn: NULL · +: custom field · Delete: remove · Escape cancel", "↑ ↓ choisir · Entrée modifier/envoyer · Espace inclure/exclure\nn : NULL · + : champ libre · Suppr : retirer · Échap annuler")
     } else {
-        "↑ ↓ choisir · Entrée modifier/envoyer · Espace inclure/exclure\nn : NULL · Début : envoyer · Échap annuler"
+        tr!("↑ ↓ select · Enter edit/send · Space include/omit\nn: NULL · Home: send · Escape cancel", "↑ ↓ choisir · Entrée modifier/envoyer · Espace inclure/exclure\nn : NULL · Début : envoyer · Échap annuler")
     }.to_owned();
     let mut note = form.note.clone();
     let (items, selected) = match &form.editor {
         Some(Editor::Type(name, index)) => {
-            note = format!("Type du champ {name}");
-            footer = "↑ ↓ choisir · Entrée valider · Échap retour".into();
+            note = trf!("Type of field {name}", "Type du champ {name}");
+            footer = tr!(
+                "↑ ↓ select · Enter confirm · Escape back",
+                "↑ ↓ choisir · Entrée valider · Échap retour"
+            )
+            .into();
             (
-                vec!["Texte", "Texte long", "Entier", "Décimal", "Booléen"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
+                vec![
+                    tr!("Text", "Texte"),
+                    tr!("Long text", "Texte long"),
+                    tr!("Integer", "Entier"),
+                    tr!("Decimal", "Décimal"),
+                    tr!("Boolean", "Booléen"),
+                ]
+                .into_iter()
+                .map(String::from)
+                .collect(),
                 *index,
             )
         }
         Some(Editor::Reference(index, selected)) => {
             note = form.reference_status(*index);
-            footer = "↑ ↓ choisir · Entrée sélectionner · Échap retour".into();
+            footer = tr!(
+                "↑ ↓ browse · Enter select · Escape back",
+                "↑ ↓ choisir · Entrée sélectionner · Échap retour"
+            )
+            .into();
             (
                 form.reference_rows(*index)
                     .into_iter()
@@ -648,8 +731,12 @@ pub(super) fn draw(frame: &mut ratatui::Frame, form: &mut Form, colors: super::v
         }
         Some(editor) => {
             let (title, value, private) = match editor {
-                Editor::Path(value) => ("Chemin HTTP".to_owned(), value, false),
-                Editor::Name(value) => ("Nom du nouveau champ".to_owned(), value, false),
+                Editor::Path(value) => (tr!("HTTP path", "Chemin HTTP").to_owned(), value, false),
+                Editor::Name(value) => (
+                    tr!("New field name", "Nom du nouveau champ").to_owned(),
+                    value,
+                    false,
+                ),
                 Editor::Field(index, value) => (
                     format!(
                         "{} · {}",
@@ -676,7 +763,7 @@ pub(super) fn draw(frame: &mut ratatui::Frame, form: &mut Form, colors: super::v
                     .style(style),
                 rows[1],
             );
-            footer = "Saisis uniquement la valeur, sans guillemets ni JSON.\nEntrée valider · Ctrl+U effacer · Échap retour".into();
+            footer = tr!("Enter only the value, without quotes or JSON.\nEnter confirm · Ctrl+U clear · Escape back", "Saisis uniquement la valeur, sans guillemets ni JSON.\nEntrée valider · Ctrl+U effacer · Échap retour").into();
             (Vec::new(), 0)
         }
         None => {
@@ -725,9 +812,15 @@ impl App {
     pub(super) fn prepare_request(&mut self) -> Result<()> {
         ensure!(
             self.job.is_none(),
-            "Attends la fin de l’action avant de préparer la requête"
+            trf!(
+                "Wait for the current action before preparing the request",
+                "Attends la fin de l’action avant de préparer la requête"
+            )
         );
-        let project = self.project.as_ref().context("Ouvre un projet d’abord")?;
+        let project = self
+            .project
+            .as_ref()
+            .context(tr!("Open a project first", "Ouvre un projet d’abord"))?;
         self.dialog = Some(forms::Dialog::Request(Box::new(Form::new(
             project,
             self.request_draft.clone(),
@@ -744,7 +837,7 @@ impl App {
                     self.dialog = Some(forms::Dialog::Request(form));
                 }
             }
-            Ok(Action::Cancel) => self.notice = "Requête annulée".into(),
+            Ok(Action::Cancel) => self.notice = tr!("Request cancelled", "Requête annulée").into(),
             other => {
                 if let Err(error) = other {
                     form.message = error.to_string();

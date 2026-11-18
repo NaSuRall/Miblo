@@ -107,7 +107,7 @@ fn custom_routes_and_free_requests_use_field_forms_without_assuming_a_crud_contr
         body: "{}".into(),
     };
     let form = Form::new(&project, request, "http://localhost:3000");
-    assert!(form.flexible && !form.patch && form.note.contains("proposés"));
+    assert!(form.flexible && !form.patch && form.note.contains(tr!("suggested", "proposés")));
     let mut unknown = self::form("POST", "/unknown");
     assert!(unknown.fields.is_empty());
     key(&mut unknown, KeyCode::Char('+'));

@@ -36,7 +36,10 @@ pub fn http_base(project: &Path) -> Result<String> {
             && url.path() == "/"
             && url.query().is_none()
             && url.fragment().is_none(),
-        "SERVER_ADDRESS doit être un nom d’hôte ou une adresse IP"
+        trf!(
+            "SERVER_ADDRESS must be a hostname or IP address",
+            "SERVER_ADDRESS doit être un nom d’hôte ou une adresse IP"
+        )
     );
     Ok(url.to_string().trim_end_matches('/').to_owned())
 }

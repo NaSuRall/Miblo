@@ -45,6 +45,43 @@ struct Entry {
     dir: bool,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum JobKind {
+    Create,
+    Add,
+    Edit,
+    Route,
+    Templates,
+    Database,
+    Doctor,
+}
+
+impl JobKind {
+    // Log prefixes and completion handling use stable identifiers, not labels.
+    fn id(self) -> &'static str {
+        match self {
+            Self::Create => "create",
+            Self::Add => "add",
+            Self::Edit => "edit",
+            Self::Route => "route",
+            Self::Templates => "templates",
+            Self::Database => "database",
+            Self::Doctor => "doctor",
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::Create => tr!("Project creation", "Création"),
+            Self::Add => tr!("Add model", "Ajout de ressource"),
+            Self::Edit => tr!("Update model", "Modification du modèle"),
+            Self::Route => tr!("Route creation", "Création de route"),
+            Self::Templates => "Templates",
+            Self::Database => tr!("Database", "Base de données"),
+            Self::Doctor => tr!("Diagnostics", "Diagnostic"),
+        }
+    }
+}
+
 struct App {
     root: Option<PathBuf>,
     project: Option<Project>,
@@ -59,7 +96,7 @@ struct App {
     code_horizontal: u16,
     log_scroll: usize,
     logs: VecDeque<String>,
-    status: String,
+    status: status::ProjectState,
     notice: String,
     theme: usize,
     dialog: Option<forms::Dialog>,
@@ -68,13 +105,14 @@ struct App {
     route_draft: crate::config::CustomRoute,
     api: Option<Process>,
     job: Option<Process>,
+    job_kind: Option<JobKind>,
     job_destination: Option<PathBuf>,
     sender: SyncSender<String>,
     receiver: Receiver<String>,
     quit: bool,
     editor_requested: bool,
     db_draft: database::MysqlSettings,
-    db_status: String,
+    db_status: status::DatabaseNotice,
     db_job: Option<Action>,
     migrate_after_add: bool,
     routes: Vec<http::Request>,
@@ -138,6 +176,49 @@ pub fn run(project: Option<PathBuf>) -> Result<()> {
 }
 
 impl App {
+    fn choose_language(&mut self) {
+        let mut description = vec![
+            tr!(
+                "Applies immediately. Saved for your next launch.",
+                "Appliqué immédiatement. Conservé pour le prochain lancement."
+            )
+            .into(),
+        ];
+        if std::env::var_os("MIBLO_LANGUAGE").is_some() {
+            description.push(tr!(
+                "MIBLO_LANGUAGE overrides the saved preference at startup. Unset it to use your saved choice.",
+                "MIBLO_LANGUAGE prime au démarrage. Retire cette variable pour utiliser le choix enregistré."
+            ).into());
+        }
+        self.choose(
+            forms::ChoiceKind::Language,
+            "Language / Langue",
+            &["English", "Français"],
+            description,
+            usize::from(crate::i18n::current() == crate::i18n::Language::Fr),
+        );
+    }
+
+    fn change_language(&mut self, language: crate::i18n::Language) -> Result<()> {
+        crate::i18n::set(language);
+        self.dialog = None;
+        // Only the preference changes: the project, running API and background
+        // jobs keep their state. Older logs remain as originally recorded.
+        if let Err(error) = crate::i18n::Store::discover().and_then(|store| store.save(language)) {
+            self.report(trf!(
+                "Language changed for this session, but the preference could not be saved: {error:#}",
+                "Langue changée pour cette session, mais la préférence n’a pas pu être enregistrée : {error:#}"
+            ));
+            return Ok(());
+        }
+        self.notice = tr!(
+            "Language saved: English · L to change",
+            "Langue enregistrée : français · L pour changer"
+        )
+        .into();
+        Ok(())
+    }
+
     fn new() -> Self {
         let (sender, receiver) = mpsc::sync_channel(256);
         Self {
@@ -154,8 +235,12 @@ impl App {
             code_horizontal: 0,
             log_scroll: 0,
             logs: VecDeque::new(),
-            status: "Aucun projet ouvert".into(),
-            notice: "n : créer une API • o : ouvrir un projet • Espace : actions • ? : aide".into(),
+            status: status::ProjectState::Closed,
+            notice: tr!(
+                "n: create an API • o: open a project • Space: actions • ?: help",
+                "n : créer une API • o : ouvrir un projet • Espace : actions • ? : aide"
+            )
+            .into(),
             theme: 0,
             dialog: None,
             new_draft: forms::NewDraft::default(),
@@ -163,13 +248,14 @@ impl App {
             route_draft: crate::config::CustomRoute::default(),
             api: None,
             job: None,
+            job_kind: None,
             job_destination: None,
             sender,
             receiver,
             quit: false,
             editor_requested: false,
             db_draft: database::MysqlSettings::default(),
-            db_status: "Non vérifiée".into(),
+            db_status: status::DatabaseNotice::Unchecked,
             db_job: None,
             migrate_after_add: false,
             routes: vec![],
@@ -193,9 +279,14 @@ impl App {
     fn open_project(&mut self, path: &Path) -> Result<()> {
         ensure!(
             self.api.is_none() && self.job.is_none() && !self.tester.pending,
-            "Arrête l’API et attends la fin de l’action avant de changer de projet"
+            trf!(
+                "Stop the API and wait for the current action before changing projects",
+                "Arrête l’API et attends la fin de l’action avant de changer de projet"
+            )
         );
-        let root = path.canonicalize().context("Dossier introuvable")?;
+        let root = path
+            .canonicalize()
+            .context(tr!("Directory not found", "Dossier introuvable"))?;
         let project = Project::load(&root.join("miblo.yaml"))?;
         self.root = Some(root);
         self.project = Some(project);
@@ -207,7 +298,7 @@ impl App {
         self.api_ready = false;
         self.restart_required = false;
         self.resume_route_after_template_update = false;
-        self.db_status = "Non vérifiée".into();
+        self.db_status = status::DatabaseNotice::Unchecked;
         self.selected = 0;
         self.resource_selected = 0;
         self.expanded = ["src", "src/resources", "migrations"]
@@ -226,7 +317,11 @@ impl App {
             self.selected = index;
             self.open_selected()?;
         }
-        self.notice = "Projet ouvert • Tab : changer de panneau • Espace : actions".into();
+        self.notice = tr!(
+            "Project opened • Tab: switch panel • Space: actions",
+            "Projet ouvert • Tab : changer de panneau • Espace : actions"
+        )
+        .into();
         Ok(())
     }
 
@@ -244,8 +339,8 @@ impl App {
         self.base_url = crate::runtime::http_base(&root).unwrap_or_default();
         self.monitor.invalidate();
         self.status = match generation::inspect(&root) {
-            Ok(_) => "Configuration cohérente".into(),
-            Err(e) => format!("À vérifier : {e}"),
+            Ok(_) => status::ProjectState::Ready,
+            Err(e) => status::ProjectState::Issue(e.to_string()),
         };
         let selected = self
             .entries
@@ -268,15 +363,24 @@ impl App {
     }
 
     fn load_file(&mut self, relative: &Path) -> Result<()> {
-        let root = self.root.as_ref().context("Ouvre un projet d’abord")?;
+        let root = self
+            .root
+            .as_ref()
+            .context(tr!("Open a project first", "Ouvre un projet d’abord"))?;
         let path = root.join(relative).canonicalize()?;
         ensure!(
             path.starts_with(root) && path.is_file(),
-            "Le fichier doit appartenir au projet"
+            trf!(
+                "The file must belong to this project",
+                "Le fichier doit appartenir au projet"
+            )
         );
         ensure!(
             !secret_file(relative),
-            "Les fichiers .env privés ne sont pas affichés"
+            trf!(
+                "Private .env files are hidden",
+                "Les fichiers .env privés ne sont pas affichés"
+            )
         );
         let mut bytes = Vec::new();
         fs::File::open(&path)?
@@ -284,12 +388,18 @@ impl App {
             .read_to_end(&mut bytes)?;
         let truncated = bytes.len() > 128 * 1024;
         bytes.truncate(128 * 1024);
-        ensure!(!bytes.contains(&0), "Ce fichier est binaire");
+        ensure!(
+            !bytes.contains(&0),
+            trf!("This is a binary file", "Ce fichier est binaire")
+        );
         self.code = String::from_utf8_lossy(&bytes).lines().map(clean).collect();
         if truncated {
             self.code.push(
-                "… aperçu limité à 128 Kio — ouvre le fichier dans ton éditeur pour la suite"
-                    .into(),
+                tr!(
+                    "… preview limited to 128 KiB — open the file in your editor to see more",
+                    "… aperçu limité à 128 Kio — ouvre le fichier dans ton éditeur pour la suite"
+                )
+                .into(),
             );
         }
         self.file = Some(relative.into());
@@ -303,7 +413,7 @@ impl App {
                 .project
                 .as_ref()
                 .and_then(|p| p.resources.get(self.resource_selected))
-                .context("Aucune ressource")?;
+                .context(tr!("No model", "Aucune ressource"))?;
             let path = PathBuf::from(format!("src/resources/{}/handlers.rs", resource.module()));
             if let Some(parent) = path.parent() {
                 self.expanded.insert(parent.to_path_buf());
@@ -335,7 +445,7 @@ impl App {
                 self.dialog = None;
                 self.resume_route_after_template_update = false;
                 self.db_draft.password.clear();
-                self.notice = "Action annulée".into();
+                self.notice = tr!("Action cancelled", "Action annulée").into();
             } else {
                 self.request_quit()?;
             }
@@ -345,8 +455,11 @@ impl App {
             return self.dialog_key(key);
         }
         match key.code {
-            KeyCode::Char(':') => self.input(forms::InputKind::Command, "Commande", ""),
+            KeyCode::Char(':') => {
+                self.input(forms::InputKind::Command, tr!("Command", "Commande"), "")
+            }
             KeyCode::Char(' ') => self.palette(),
+            KeyCode::Char('L') => self.choose_language(),
             KeyCode::Char('?') | KeyCode::F(1) => self.dialog = Some(forms::Dialog::Help),
             KeyCode::Tab => {
                 self.cycle_focus(false);
@@ -387,14 +500,22 @@ impl App {
             KeyCode::Char('a') => self.start_add()?,
             KeyCode::Char('m') => self.start_model_edit()?,
             KeyCode::Char('b') => self.database_menu()?,
-            KeyCode::Char('o') => self.input(forms::InputKind::Open, "Dossier du projet", "."),
+            KeyCode::Char('o') => self.input(
+                forms::InputKind::Open,
+                tr!("Project directory", "Dossier du projet"),
+                ".",
+            ),
             KeyCode::Char('r') => self.run_api()?,
             KeyCode::Char('s') => self.stop_api(),
             KeyCode::Char('c') => self.cargo_job("check")?,
             KeyCode::Char('e') => self.request_editor()?,
             KeyCode::Char('t') => {
                 self.theme = (self.theme + 1) % 3;
-                self.notice = "Thème modifié pour cette session".into();
+                self.notice = tr!(
+                    "Theme changed for this session",
+                    "Thème modifié pour cette session"
+                )
+                .into();
             }
             KeyCode::Char('q') => self.request_quit()?,
             KeyCode::F(5) => self.refresh()?,
@@ -476,26 +597,30 @@ impl App {
             .as_mut()
             .and_then(|process| process.poll().ok().flatten());
         if let Some(status) = finished {
-            let label = self.job.take().map(|p| p.label.clone()).unwrap_or_default();
+            let raw_label = self.job.take().map(|p| p.label.clone()).unwrap_or_default();
+            let kind = self.job_kind.take();
+            let label = match kind {
+                Some(kind) => kind.label(),
+                None => raw_label.as_str(),
+            };
             let db_action = self.db_job.take();
             let migrate_after_add = std::mem::take(&mut self.migrate_after_add);
             self.notice = format!("{label} : {status}");
             self.log(self.notice.clone());
             if status.success() {
-                if label == "Création de route" {
+                if kind == Some(JobKind::Route) {
                     self.restart_required = self.api.is_some();
                 }
                 if migrate_after_add {
-                    self.db_status = "Migrations en attente".into();
+                    self.db_status = status::DatabaseNotice::Pending;
                     self.restart_required = self.api.is_some();
                 }
                 if let Some(action) = db_action {
                     self.db_status = if action == Action::Check {
-                        "Connexion vérifiée"
+                        status::DatabaseNotice::Connected
                     } else {
-                        "Migrations à jour"
-                    }
-                    .into();
+                        status::DatabaseNotice::Ready
+                    };
                 }
                 if let Some(root) = self.job_destination.take() {
                     if let Err(error) = self.open_project(&root) {
@@ -526,14 +651,14 @@ impl App {
             } else if self.job_destination.take().is_some() {
                 self.creation_failed();
             } else if db_action.is_some() {
-                self.db_status = "Échec • consulter les logs".into();
-            } else if label == "Création de route" {
+                self.db_status = status::DatabaseNotice::Failed;
+            } else if kind == Some(JobKind::Route) {
                 self.route_creation_failed();
             }
-            if label == "Templates" {
+            if kind == Some(JobKind::Templates) {
                 self.template_update_finished(status.success());
             }
-            if status.success() && label == "Création de route" {
+            if status.success() && kind == Some(JobKind::Route) {
                 self.show_schema = false;
                 self.focus = Focus::Routes;
                 self.route_selected = self
@@ -547,9 +672,9 @@ impl App {
                     self.report(format!("{error:#}"));
                 } else {
                     self.notice = if self.route_draft.action.is_some() {
-                        "Route créée • CRUD et SQL du modèle reliés • redémarre l’API puis x pour tester"
+                        tr!("Route created • model CRUD and SQL connected • restart the API, then x to test", "Route créée • CRUD et SQL du modèle reliés • redémarre l’API puis x pour tester")
                     } else {
-                        "Route créée • métier à compléter avec e • réponse initiale HTTP 501"
+                        tr!("Route created • complete business logic with e • initial response HTTP 501", "Route créée • métier à compléter avec e • réponse initiale HTTP 501")
                     }.into();
                 }
             }
@@ -560,14 +685,33 @@ impl App {
     }
 
     fn ready_for_job(&self) -> Result<&Path> {
-        ensure!(self.job.is_none(), "Une action est déjà en cours");
-        ensure!(!self.tester.pending, "Attends la fin de la requête HTTP");
-        self.root
-            .as_deref()
-            .context("Aucun projet ouvert : n pour créer une API, o pour ouvrir un projet")
+        ensure!(
+            self.job.is_none(),
+            trf!(
+                "An action is already running",
+                "Une action est déjà en cours"
+            )
+        );
+        ensure!(
+            !self.tester.pending,
+            trf!(
+                "Wait for the HTTP request to finish",
+                "Attends la fin de la requête HTTP"
+            )
+        );
+        self.root.as_deref().context(tr!(
+            "No project open: n to create an API, o to open a project",
+            "Aucun projet ouvert : n pour créer une API, o pour ouvrir un projet"
+        ))
     }
     fn run_api(&mut self) -> Result<()> {
-        ensure!(self.api.is_none(), "L’API est déjà lancée par Miblo");
+        ensure!(
+            self.api.is_none(),
+            trf!(
+                "The API is already running in Miblo",
+                "L’API est déjà lancée par Miblo"
+            )
+        );
         let root = self.ready_for_job()?;
         let url = match database::connection_url(root) {
             Ok(url) => url,
@@ -587,7 +731,7 @@ impl App {
         self.api_failure = None;
         self.restart_required = false;
         self.monitor.invalidate();
-        self.log("Lancement de l’API…".into());
+        self.log(tr!("Starting the API…", "Lancement de l’API…").into());
         Ok(())
     }
     fn stop_api(&mut self) {
@@ -596,7 +740,7 @@ impl App {
         self.api_failure = None;
         self.restart_required = false;
         self.monitor.invalidate();
-        self.log("API arrêtée".into());
+        self.log(tr!("API stopped", "API arrêtée").into());
     }
     fn cargo_job(&mut self, action: &str) -> Result<()> {
         let root = self.ready_for_job()?;
@@ -612,28 +756,40 @@ impl App {
     fn cli_job(
         &mut self,
         args: Vec<OsString>,
-        label: &str,
+        kind: JobKind,
         destination: Option<PathBuf>,
         remove_local_env: bool,
     ) -> Result<()> {
-        ensure!(self.job.is_none(), "Une action est déjà en cours");
+        ensure!(
+            self.job.is_none(),
+            trf!(
+                "An action is already running",
+                "Une action est déjà en cours"
+            )
+        );
         let mut command = Command::new(std::env::current_exe()?);
-        command.args(args);
+        command
+            .args(args)
+            .env("MIBLO_LANGUAGE", crate::i18n::current().code());
         if remove_local_env {
             command.env_remove("MIBLO_TEMPLATE_DIR");
         }
-        self.job = Some(Process::spawn(command, label, self.sender.clone())?);
+        self.job = Some(Process::spawn(command, kind.id(), self.sender.clone())?);
+        self.job_kind = Some(kind);
         self.monitor.invalidate();
         self.job_destination = destination;
         self.dialog = None;
-        self.notice = format!("{label} en cours…");
+        self.notice = trf!("{} in progress…", "{} en cours…", kind.label());
         Ok(())
     }
 
     fn request_editor(&mut self) -> Result<()> {
         ensure!(
             self.job.is_none(),
-            "Attends la fin de la génération avant d’ouvrir l’éditeur"
+            trf!(
+                "Wait for generation to finish before opening the editor",
+                "Attends la fin de la génération avant d’ouvrir l’éditeur"
+            )
         );
         if self.focus == Focus::Routes {
             self.preview_route()?;
@@ -643,18 +799,31 @@ impl App {
             let path = format!("src/resources/custom_routes/{}/service.rs", route.name);
             self.load_file(Path::new(&path))?;
         }
-        ensure!(self.file.is_some(), "Sélectionne un fichier d’abord");
+        ensure!(
+            self.file.is_some(),
+            trf!("Select a file first", "Sélectionne un fichier d’abord")
+        );
         self.editor_requested = true;
         Ok(())
     }
     fn open_editor(&self) -> Result<()> {
-        let root = self.root.as_ref().context("Aucun projet")?;
+        let root = self
+            .root
+            .as_ref()
+            .context(tr!("No project", "Aucun projet"))?;
         let path = root
-            .join(self.file.as_ref().context("Aucun fichier")?)
+            .join(
+                self.file
+                    .as_ref()
+                    .context(tr!("No file", "Aucun fichier"))?,
+            )
             .canonicalize()?;
         ensure!(
             path.starts_with(root),
-            "Le fichier doit appartenir au projet"
+            trf!(
+                "The file must belong to this project",
+                "Le fichier doit appartenir au projet"
+            )
         );
         let editor = std::env::var("VISUAL")
             .or_else(|_| std::env::var("EDITOR"))
@@ -665,25 +834,42 @@ impl App {
                     "vi".into()
                 }
             });
-        let words = shell_words::split(&editor).context("VISUAL/EDITOR est invalide")?;
-        let executable = words.first().context("VISUAL/EDITOR est vide")?;
+        let words = shell_words::split(&editor).context(tr!(
+            "Invalid VISUAL/EDITOR setting",
+            "VISUAL/EDITOR est invalide"
+        ))?;
+        let executable = words
+            .first()
+            .context(tr!("VISUAL/EDITOR is empty", "VISUAL/EDITOR est vide"))?;
         let status = Command::new(executable)
             .args(&words[1..])
             .arg(path)
             .current_dir(root)
             .status()?;
-        ensure!(status.success(), "L’éditeur s’est terminé avec {status}");
+        ensure!(
+            status.success(),
+            trf!(
+                "The editor exited with {status}",
+                "L’éditeur s’est terminé avec {status}"
+            )
+        );
         Ok(())
     }
 
     fn request_quit(&mut self) -> Result<()> {
         ensure!(
             !self.tester.pending,
-            "Attends la fin de la requête HTTP avant de quitter"
+            trf!(
+                "Wait for the HTTP request to finish before quitting",
+                "Attends la fin de la requête HTTP avant de quitter"
+            )
         );
         ensure!(
             self.job.is_none(),
-            "Une action est en cours ; attends sa fin pour quitter sans interrompre l’écriture des fichiers"
+            trf!(
+                "An action is running; wait for it to finish so file writes are not interrupted",
+                "Une action est en cours ; attends sa fin pour quitter sans interrompre l’écriture des fichiers"
+            )
         );
         self.quit = true;
         Ok(())
@@ -708,9 +894,11 @@ impl App {
             "code" => self.show_code = !self.show_code,
             "db" | "database" => self.database_menu()?,
             "migrate" => self.confirm_database_action(Action::Migrate)?,
-            "open" if argument.is_empty() => {
-                self.input(forms::InputKind::Open, "Dossier du projet", ".")
-            }
+            "open" if argument.is_empty() => self.input(
+                forms::InputKind::Open,
+                tr!("Project directory", "Dossier du projet"),
+                ".",
+            ),
             "open" => self.open_project(Path::new(argument.trim()))?,
             "run" | "start" => self.run_api()?,
             "stop" => self.stop_api(),
@@ -720,7 +908,7 @@ impl App {
                 let root = self.ready_for_job()?.as_os_str().to_owned();
                 self.cli_job(
                     vec!["doctor".into(), "--project".into(), root],
-                    "Diagnostic",
+                    JobKind::Doctor,
                     None,
                     false,
                 )?;
@@ -728,8 +916,12 @@ impl App {
             "edit" | "e" => self.request_editor()?,
             "refresh" => self.refresh()?,
             "theme" => self.theme = (self.theme + 1) % 3,
+            "language" | "langue" => self.choose_language(),
             "help" => self.dialog = Some(forms::Dialog::Help),
-            _ => anyhow::bail!("Commande inconnue. :help affiche les commandes disponibles."),
+            _ => anyhow::bail!(trf!(
+                "Unknown command. :help shows the available commands.",
+                "Commande inconnue. :help affiche les commandes disponibles."
+            )),
         }
         Ok(())
     }
@@ -753,17 +945,19 @@ impl App {
     }
 
     fn toggle_schema(&mut self) -> Result<()> {
-        let root = self
-            .root
-            .as_ref()
-            .context("Ouvre un projet pour voir sa base de données")?;
+        let root = self.root.as_ref().context(tr!(
+            "Open a project to view its database",
+            "Ouvre un projet pour voir sa base de données"
+        ))?;
         self.show_schema = !self.show_schema;
         if self.show_schema {
             self.schema.refresh(root);
             self.focus = Focus::Tables;
-            self.notice =
+            self.notice = tr!(
+                "Live database schema · p: declared models · F5: refresh · d: routes",
                 "Schéma réel de la base · p : modèles déclarés · F5 : actualiser · d : routes"
-                    .into();
+            )
+            .into();
         } else {
             self.focus = Focus::Routes;
         }
@@ -773,20 +967,27 @@ impl App {
     fn api_badge(&self) -> status::Badge {
         use status::{Badge, HttpHealth, Tone};
         if self.root.is_none() {
-            return Badge::new(Tone::Neutral, "Aucun projet", "n créer · o ouvrir");
+            return Badge::new(
+                Tone::Neutral,
+                tr!("No project", "Aucun projet"),
+                tr!("n create · o open", "n créer · o ouvrir"),
+            );
         }
         if let Some(error) = &self.api_failure {
             return Badge::new(
                 Tone::Error,
-                "API interrompue",
-                format!("{error} · consulter les logs"),
+                tr!("API exited", "API interrompue"),
+                trf!("{error} · check logs", "{error} · consulter les logs"),
             );
         }
         if self.base_url.is_empty() {
             return Badge::new(
                 Tone::Error,
-                "Adresse HTTP invalide",
-                "Vérifie SERVER_ADDRESS / SERVER_PORT puis F5",
+                tr!("Invalid HTTP address", "Adresse HTTP invalide"),
+                tr!(
+                    "Check SERVER_ADDRESS / SERVER_PORT, then F5",
+                    "Vérifie SERVER_ADDRESS / SERVER_PORT puis F5"
+                ),
             );
         }
         if self.api.is_some()
@@ -795,8 +996,11 @@ impl App {
         {
             return Badge::new(
                 Tone::Warning,
-                "Démarrage en cours",
-                "Compilation / connexion à la base…",
+                tr!("Starting", "Démarrage en cours"),
+                tr!(
+                    "Compiling / connecting to the database…",
+                    "Compilation / connexion à la base…"
+                ),
             );
         }
         match &self.monitor.api {
@@ -804,16 +1008,19 @@ impl App {
                 if self.restart_required {
                     Badge::new(
                         Tone::Warning,
-                        "API à redémarrer",
-                        "API répond · s puis r pour charger les nouvelles routes",
+                        tr!("API restart required", "API à redémarrer"),
+                        tr!(
+                            "API responds · s then r to load new routes",
+                            "API répond · s puis r pour charger les nouvelles routes"
+                        ),
                     )
                 } else {
                     Badge::new(
                         Tone::Good,
                         if self.api.is_some() {
-                            "API en cours"
+                            tr!("API running", "API en cours")
                         } else {
-                            "API accessible (externe)"
+                            tr!("API available (external)", "API accessible (externe)")
                         },
                         format!("GET /health → HTTP {code} · {elapsed} ms"),
                     )
@@ -821,25 +1028,36 @@ impl App {
             }
             HttpHealth::Failed(code) if self.api.is_some() || code.is_some() => Badge::new(
                 Tone::Error,
-                "API ne répond pas",
-                code.map_or("Aucune réponse HTTP · consulter les logs".into(), |s| {
-                    format!("GET /health → HTTP {s}")
-                }),
+                tr!("API not responding", "API ne répond pas"),
+                code.map_or(
+                    tr!(
+                        "No HTTP response · check logs",
+                        "Aucune réponse HTTP · consulter les logs"
+                    )
+                    .into(),
+                    |s| format!("GET /health → HTTP {s}"),
+                ),
             ),
             HttpHealth::Unknown if self.api.is_some() => Badge::new(
                 Tone::Warning,
-                "Vérification HTTP…",
-                "Le processus a démarré, réponse HTTP attendue",
+                tr!("Checking HTTP…", "Vérification HTTP…"),
+                tr!(
+                    "Process started; waiting for an HTTP response",
+                    "Le processus a démarré, réponse HTTP attendue"
+                ),
             ),
             HttpHealth::Unknown => Badge::new(
                 Tone::Neutral,
-                "Vérification HTTP…",
-                "Contrôle de /health en cours",
+                tr!("Checking HTTP…", "Vérification HTTP…"),
+                tr!("Checking /health", "Contrôle de /health en cours"),
             ),
             _ => Badge::new(
                 Tone::Neutral,
-                "API arrêtée",
-                "r lancer l’API · x tester une route",
+                tr!("API stopped", "API arrêtée"),
+                tr!(
+                    "r start API · x test a route",
+                    "r lancer l’API · x tester une route"
+                ),
             ),
         }
     }
@@ -952,17 +1170,19 @@ mod tests {
         let rendered = screen(&mut app, 130, 40);
         for label in [
             "MIBLO",
-            "Modèles · m modifier",
-            "Fichiers",
-            "Atelier API",
+            tr!("Models · m edit", "Modèles · m modifier"),
+            tr!("Files", "Fichiers"),
+            tr!("API workspace", "Atelier API"),
             "Logs",
-            "État",
+            tr!("status", "État"),
         ] {
             assert!(rendered.contains(label), "missing {label}");
         }
         app.palette();
-        assert!(screen(&mut app, 80, 24).contains("Actions"));
-        assert!(screen(&mut app, 40, 12).contains("Agrandis le terminal"));
+        assert!(screen(&mut app, 80, 24).contains(tr!("Actions", "Actions")));
+        assert!(
+            screen(&mut app, 40, 12).contains(tr!("Resize the terminal", "Agrandis le terminal"))
+        );
         app.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             .unwrap();
         assert!(app.dialog.is_none());
@@ -972,7 +1192,7 @@ mod tests {
         assert!(!app.quit);
         app.input(
             forms::InputKind::DbPassword,
-            "Mot de passe",
+            tr!("Password", "Mot de passe"),
             "not-visible-secret",
         );
         let rendered = screen(&mut app, 130, 40);
@@ -994,10 +1214,10 @@ mod tests {
         assert_eq!(app.api_badge().tone, status::Tone::Good);
         let rendered = screen(&mut app, 130, 40);
         for label in [
-            "API accessible (externe)",
-            "Mise à jour BDD requise",
+            tr!("API available (external)", "API accessible (externe)"),
+            tr!("Database update required", "Mise à jour BDD requise"),
             "Routes",
-            "Réponse HTTP",
+            tr!("HTTP response", "Réponse HTTP"),
             "code-line-003",
         ] {
             assert!(rendered.contains(label), "missing {label}");
@@ -1006,7 +1226,12 @@ mod tests {
         app.command("code").unwrap();
         assert!(!screen(&mut app, 130, 40).contains("code-line-000"));
         let compact = screen(&mut app, 80, 24);
-        for label in ["État API", "État BDD", "Routes", "Réponse HTTP"] {
+        for label in [
+            tr!("API status", "État API"),
+            tr!("DB status", "État BDD"),
+            "Routes",
+            tr!("HTTP response", "Réponse HTTP"),
+        ] {
             assert!(compact.contains(label));
         }
         app.monitor.api = status::HttpHealth::Failed(Some(503));
@@ -1070,7 +1295,11 @@ mod tests {
         app.schema.selected = 1;
         app.focus = Focus::Schema;
         let rendered = screen(&mut app, 80, 24);
-        for label in ["Schéma déclaré", "TABLE users", "PK"] {
+        for label in [
+            tr!("Declared schema", "Schéma déclaré"),
+            "TABLE users",
+            "PK",
+        ] {
             assert!(rendered.contains(label), "missing {label}");
         }
         app.schema.scroll = 3;

@@ -15,7 +15,8 @@ use std::path::PathBuf;
 #[command(
     name = "miblo",
     version,
-    about = "Build and manage Rust / Axum APIs with SQLite or MySQL"
+    about = "Generate and manage Rust REST APIs with Axum, SQLx, SQLite or MySQL",
+    after_help = "Run miblo without arguments to open the terminal interface.\nPress Shift+L in the interface to choose English or French.\nDocumentation: https://cli.miblo.fr/en/docs/"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -275,9 +276,15 @@ fn execute(command: Command) -> Result<()> {
                     true,
                 )?;
                 wizard::confirm(if route.action.is_some() {
-                    "Créer cette route reliée au CRUD du modèle ? Aucune nouvelle table."
+                    tr!(
+                        "Create this route using the model's CRUD? No new table.",
+                        "Créer cette route reliée au CRUD du modèle ? Aucune nouvelle table."
+                    )
                 } else {
-                    "Créer cette route à compléter dans l’éditeur ? Aucune migration SQL."
+                    tr!(
+                        "Create this route to complete in your editor? No SQL migration.",
+                        "Créer cette route à compléter dans l’éditeur ? Aucune migration SQL."
+                    )
                 })?;
             }
             generation::add_route(
@@ -308,7 +315,8 @@ fn execute(command: Command) -> Result<()> {
                     &args.cache.path(),
                     true,
                 )?;
-                wizard::confirm(&format!(
+                wizard::confirm(&trf!(
+                    "Add these fields to {}? The database will be migrated separately.",
                     "Ajouter ces champs à {} ? La base sera migrée séparément.",
                     args.name
                 ))?;
@@ -385,7 +393,8 @@ fn add(args: ResourceArgs) -> Result<()> {
     }
     resource.validate()?;
     if !args.yes && !args.dry_run {
-        wizard::confirm(&format!(
+        wizard::confirm(&trf!(
+            "Add {} to {}?",
             "Ajouter {} dans {} ?",
             resource.name,
             args.project.display()
@@ -420,7 +429,11 @@ fn new(args: NewArgs) -> Result<()> {
             Some(name) => name,
             None => {
                 ensure!(!args.yes, "Supply a project name with --yes");
-                wizard::prompt_validated("Nom du projet", "my-api", project_name)?
+                wizard::prompt_validated(
+                    tr!("Project name", "Nom du projet"),
+                    "my-api",
+                    project_name,
+                )?
             }
         };
         project_name(&name)?;
@@ -428,10 +441,13 @@ fn new(args: NewArgs) -> Result<()> {
             Some(database) => database,
             None if args.yes => Database::Mysql,
             None => match wizard::select(
-                "Base de données",
+                tr!("Database", "Base de données"),
                 &[
-                    "SQLite — configuration automatique",
-                    "MySQL — serveur existant",
+                    tr!(
+                        "SQLite — automatic setup",
+                        "SQLite — configuration automatique"
+                    ),
+                    tr!("MySQL — existing server", "MySQL — serveur existant"),
                 ],
                 0,
             )? {
@@ -460,17 +476,27 @@ fn new(args: NewArgs) -> Result<()> {
             }
         } else if !args.yes {
             println!("API Rust • Axum • {}", database.name());
-            port = wizard::prompt_validated("Port du serveur", &port.to_string(), |value| {
-                ensure!(
-                    value.parse::<u16>().is_ok_and(|port| port > 0),
-                    "Choisis un port entre 1 et 65535"
-                );
-                Ok(())
-            })?
+            port = wizard::prompt_validated(
+                tr!("Server port", "Port du serveur"),
+                &port.to_string(),
+                |value| {
+                    ensure!(
+                        value.parse::<u16>().is_ok_and(|port| port > 0),
+                        trf!(
+                            "Choose a port between 1 and 65535",
+                            "Choisis un port entre 1 et 65535"
+                        )
+                    );
+                    Ok(())
+                },
+            )?
             .parse()
             .context("Invalid port")?;
             loop {
-                if !wizard::yes_no("Ajouter une ressource maintenant ?", true)? {
+                if !wizard::yes_no(
+                    tr!("Add a model now?", "Ajouter une ressource maintenant ?"),
+                    true,
+                )? {
                     break;
                 }
                 resources.push(wizard::resource(None)?);
@@ -489,7 +515,8 @@ fn new(args: NewArgs) -> Result<()> {
         destination.display()
     );
     if !args.yes && !args.dry_run {
-        wizard::confirm(&format!(
+        wizard::confirm(&trf!(
+            "Create {} with {} model(s)?",
             "Créer {} avec {} ressource(s) ?",
             project.name,
             project.resources.len()

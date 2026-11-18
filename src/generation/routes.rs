@@ -8,12 +8,18 @@ pub(super) fn supported(pack: &Pack, project: &Project) -> Result<()> {
     ensure!(
         project.routes.is_empty()
             || (pack.format >= 3 && pack.features.iter().any(|f| f == "custom-routes")),
-        "Ce template ne permet pas encore de créer des routes. Appuie sur u dans Miblo ou utilise miblo template update (version 0.5.0 ou ultérieure), puis réessaie. Aucun fichier modifié."
+        trf!(
+            "This template does not support route creation yet. Press u in Miblo or use miblo template update (version 0.5.0 or later), then retry. No files changed.",
+            "Ce template ne permet pas encore de créer des routes. Appuie sur u dans Miblo ou utilise miblo template update (version 0.5.0 ou ultérieure), puis réessaie. Aucun fichier modifié."
+        )
     );
     ensure!(
         !project.routes.iter().any(|r| r.action.is_some())
             || pack.features.iter().any(|f| f == "model-routes"),
-        "Ce template ne permet pas encore les routes CRUD de modèles. Appuie sur u ou utilise miblo template update (pack 0.6.0 ou ultérieur). Aucun fichier modifié."
+        trf!(
+            "This template does not support model CRUD routes yet. Press u or use miblo template update (pack 0.6.0 or later). No files changed.",
+            "Ce template ne permet pas encore les routes CRUD de modèles. Appuie sur u ou utilise miblo template update (pack 0.6.0 ou ultérieur). Aucun fichier modifié."
+        )
     );
     Ok(())
 }
@@ -70,7 +76,10 @@ pub(super) fn inspect(root: &Path, project: &Project, state: &State) -> Result<(
         let current = fs::read_to_string(root.join(ROUTES))?;
         ensure!(
             edit::format_source(&current)? == edit::format_source(ancestor)?,
-            "Le registre des routes personnalisées a été modifié. Conserve tes changements dans les handlers ou services et restaure {ROUTES} avant de générer du code."
+            trf!(
+                "The custom route registry was modified. Keep your changes in handlers or services and restore {ROUTES} before generating code.",
+                "Le registre des routes personnalisées a été modifié. Conserve tes changements dans les handlers ou services et restaure {ROUTES} avant de générer du code."
+            )
         );
     }
     Ok(())
@@ -130,20 +139,40 @@ pub fn add_route(
         return Ok(());
     }
     commit(root, &files, &originals)?;
-    println!("Route créée : {} {}", route.method, route.path);
+    println!(
+        "{}",
+        trf!(
+            "Route created: {} {}",
+            "Route créée : {} {}",
+            route.method,
+            route.path
+        )
+    );
     if let Some(action) = route.action {
         println!(
-            "{} · CRUD et SQL du modèle {} reliés automatiquement.",
-            action.label(),
-            route.resource.as_deref().unwrap_or_default()
+            "{}",
+            trf!(
+                "{} · CRUD and SQL for model {} connected automatically.",
+                "{} · CRUD et SQL du modèle {} reliés automatiquement.",
+                action.label(),
+                route.resource.as_deref().unwrap_or_default()
+            )
         );
         println!(
-            "Redémarre l’API pour charger cette route, puis teste-la avec x. Aucune nouvelle table."
+            "{}",
+            trf!(
+                "Restart the API to load this route, then test it with x. No new table.",
+                "Redémarre l’API pour charger cette route, puis teste-la avec x. Aucune nouvelle table."
+            )
         );
     } else {
         println!(
-            "Complète src/resources/custom_routes/{}/service.rs dans ton éditeur.\nLe handler renvoie HTTP 501 jusqu’à son implémentation. Redémarre l’API pour charger cette route. Aucune migration SQL.",
-            route.name
+            "{}",
+            trf!(
+                "Complete src/resources/custom_routes/{}/service.rs in your editor.\nThe handler returns HTTP 501 until implemented. Restart the API to load this route. No SQL migration.",
+                "Complète src/resources/custom_routes/{}/service.rs dans ton éditeur.\nLe handler renvoie HTTP 501 jusqu’à son implémentation. Redémarre l’API pour charger cette route. Aucune migration SQL.",
+                route.name
+            )
         );
     }
     Ok(())

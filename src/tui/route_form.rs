@@ -10,24 +10,44 @@ impl App {
             method: "GET".into(),
             ..Default::default()
         };
-        let mut items = vec!["Logique personnalisée — sans modèle".to_owned()];
+        let mut items = vec![
+            tr!(
+                "Custom logic — no model",
+                "Logique personnalisée — sans modèle"
+            )
+            .to_owned(),
+        ];
         items.extend(
             self.project
                 .as_ref()
-                .context("Ouvre un projet d’abord")?
+                .context(tr!("Open a project first", "Ouvre un projet d’abord"))?
                 .resources
                 .iter()
                 .map(|r| format!("{} · {}", r.name, r.path)),
         );
         self.choose(
             ChoiceKind::RouteResource,
-            "Créer une route — modèle associé",
+            tr!(
+                "Create a route — linked model",
+                "Créer une route — modèle associé"
+            ),
             &items.iter().map(String::as_str).collect::<Vec<_>>(),
             vec![
-                "Choisis un modèle, puis l’action : Miblo branche son CRUD et ses requêtes SQL."
-                    .into(),
-                "Les champs, validations et relations du modèle sont réutilisés.".into(),
-                "Modèle absent ? Échap puis a pour créer sa table et ses champs.".into(),
+                tr!(
+                    "Choose a model, then an action: Miblo connects its CRUD and SQL queries.",
+                    "Choisis un modèle, puis l’action : Miblo branche son CRUD et ses requêtes SQL."
+                )
+                .into(),
+                tr!(
+                    "The model's fields, validation and relationships are reused.",
+                    "Les champs, validations et relations du modèle sont réutilisés."
+                )
+                .into(),
+                tr!(
+                    "Model missing? Escape, then a to create its table and fields.",
+                    "Modèle absent ? Échap puis a pour créer sa table et ses champs."
+                )
+                .into(),
             ],
             usize::from(items.len() > 1),
         );
@@ -49,7 +69,10 @@ impl App {
                 );
                 self.input(
                     InputKind::RouteName,
-                    "Nom de la route / fonction (snake_case)",
+                    tr!(
+                        "Route / function name (snake_case)",
+                        "Nom de la route / fonction (snake_case)"
+                    ),
                     &suggested,
                 );
             }
@@ -62,11 +85,14 @@ impl App {
                 {
                     self.choose(
                         ChoiceKind::RouteBody,
-                        "Corps de la requête",
-                        &["JSON", "Sans corps"],
+                        tr!("Request body", "Corps de la requête"),
+                        &["JSON", tr!("No body", "Sans corps")],
                         vec![
-                            "JSON sera reçu dans le handler et transmis à la fonction métier."
-                                .into(),
+                            tr!(
+                                "The handler receives JSON and passes it to the business function.",
+                                "JSON sera reçu dans le handler et transmis à la fonction métier."
+                            )
+                            .into(),
                         ],
                         0,
                     );
@@ -87,17 +113,27 @@ impl App {
                         .project
                         .as_ref()
                         .and_then(|p| p.resources.get(selected - 1))
-                        .context("Modèle introuvable")?;
+                        .context(tr!("Model not found", "Modèle introuvable"))?;
                     self.route_draft.resource = Some(resource.name.clone());
                     self.route_draft.path = format!("{}/custom", resource.path);
                     let mut actions: Vec<_> = RouteAction::ALL.iter().map(|a| a.label()).collect();
-                    actions.push("Logique personnalisée — à compléter (501)");
+                    actions.push(tr!(
+                        "Custom logic — to implement (501)",
+                        "Logique personnalisée — à compléter (501)"
+                    ));
                     self.choose(
                         ChoiceKind::RouteAction,
-                        "Action de la route pour ce modèle",
+                        tr!(
+                            "Route action for this model",
+                            "Action de la route pour ce modèle"
+                        ),
                         &actions,
                         vec![
-                            "Le CRUD utilise la table existante. Aucune nouvelle migration.".into(),
+                            tr!(
+                                "CRUD uses the existing table. No new migration.",
+                                "Le CRUD utilise la table existante. Aucune nouvelle migration."
+                            )
+                            .into(),
                         ],
                         0,
                     );
@@ -109,7 +145,7 @@ impl App {
                 }
                 self.choose(
                     ChoiceKind::RouteMethod,
-                    "Méthode de la nouvelle route",
+                    tr!("New route method", "Méthode de la nouvelle route"),
                     HTTP_METHODS,
                     Vec::new(),
                     0,
@@ -128,7 +164,7 @@ impl App {
                                 .iter()
                                 .find(|r| Some(&r.name) == self.route_draft.resource.as_ref())
                         })
-                        .context("Modèle introuvable")?;
+                        .context(tr!("Model not found", "Modèle introuvable"))?;
                     self.route_draft.path = format!(
                         "{}/{}{}",
                         resource.path,
@@ -137,15 +173,21 @@ impl App {
                     );
                     self.input(
                         InputKind::RoutePath,
-                        "Chemin de la route",
+                        tr!("Route path", "Chemin de la route"),
                         &self.route_draft.path.clone(),
                     );
                 } else {
                     self.choose(
                         ChoiceKind::RouteMethod,
-                        "Méthode de la nouvelle route",
+                        tr!("New route method", "Méthode de la nouvelle route"),
                         HTTP_METHODS,
-                        vec!["La fonction métier sera à compléter (réponse initiale 501).".into()],
+                        vec![
+                            tr!(
+                                "Complete the business function (initial response 501).",
+                                "La fonction métier sera à compléter (réponse initiale 501)."
+                            )
+                            .into(),
+                        ],
                         0,
                     );
                 }
@@ -154,7 +196,10 @@ impl App {
                 self.route_draft.method = HTTP_METHODS[selected].into();
                 self.input(
                     InputKind::RoutePath,
-                    "Chemin de la route (ex. /users/{id}/activate)",
+                    tr!(
+                        "Route path (e.g. /users/{id}/activate)",
+                        "Chemin de la route (ex. /users/{id}/activate)"
+                    ),
                     &self.route_draft.path.clone(),
                 );
             }
@@ -188,16 +233,21 @@ impl App {
                 if let Some(action) = route.action {
                     args.extend(["--action".into(), action.arg().into()]);
                 }
-                self.cli_job(args, "Création de route", None, false)?;
+                self.cli_job(args, JobKind::Route, None, false)?;
             }
-            ChoiceKind::RouteConfirm => self.notice = "Création de route annulée".into(),
+            ChoiceKind::RouteConfirm => {
+                self.notice = tr!("Route creation cancelled", "Création de route annulée").into()
+            }
             _ => unreachable!(),
         }
         Ok(())
     }
 
     fn validate_route_draft(&self) -> Result<()> {
-        let mut project = self.project.clone().context("Ouvre un projet d’abord")?;
+        let mut project = self
+            .project
+            .clone()
+            .context(tr!("Open a project first", "Ouvre un projet d’abord"))?;
         project.routes.push(self.route_draft.clone());
         project.validate()
     }
@@ -206,40 +256,73 @@ impl App {
         let route = &self.route_draft;
         let mut description = vec![
             format!("{} {}", route.method, route.path),
-            format!(
+            trf!(
+                "Model: {} · body: {}",
                 "Modèle : {} · corps : {}",
-                route.resource.as_deref().unwrap_or("indépendante"),
+                route
+                    .resource
+                    .as_deref()
+                    .unwrap_or(tr!("standalone", "indépendante")),
                 if route.json_body && route.action.is_some() {
-                    "JSON du modèle"
+                    tr!("Model JSON", "JSON du modèle")
                 } else if route.json_body {
                     "JSON"
                 } else {
                     "aucun"
                 }
             ),
-            format!("Dossier : src/resources/custom_routes/{}/", route.name),
+            trf!(
+                "Directory: src/resources/custom_routes/{}/",
+                "Dossier : src/resources/custom_routes/{}/",
+                route.name
+            ),
         ];
         if let Some(action) = route.action {
             description.extend([
-                format!(
+                trf!(
+                    "Action: {} · model SQL connected automatically",
                     "Action : {} · SQL du modèle branché automatiquement",
                     action.label()
                 ),
-                "Le handler réutilise le CRUD existant et ses validations.".into(),
-                "Le nom de l’URL n’ajoute aucun filtre ni authentification.".into(),
+                tr!(
+                    "The handler reuses the existing CRUD and validation.",
+                    "Le handler réutilise le CRUD existant et ses validations."
+                )
+                .into(),
+                tr!(
+                    "The URL name does not add filters or authentication.",
+                    "Le nom de l’URL n’ajoute aucun filtre ni authentification."
+                )
+                .into(),
             ]);
         } else {
             description.extend([
-                "handlers.rs : HTTP · requests.rs : paramètres · service.rs : métier".into(),
-                "Réponse initiale : 501 non implémenté. Complète service.rs dans ton éditeur."
-                    .into(),
+                tr!(
+                    "handlers.rs: HTTP · requests.rs: parameters · service.rs: business logic",
+                    "handlers.rs : HTTP · requests.rs : paramètres · service.rs : métier"
+                )
+                .into(),
+                tr!(
+                    "Initial response: 501 not implemented. Complete service.rs in your editor.",
+                    "Réponse initiale : 501 non implémenté. Complète service.rs dans ton éditeur."
+                )
+                .into(),
             ]);
         }
-        description.push("Aucune nouvelle table. Redémarre l’API pour charger la route.".into());
+        description.push(
+            tr!(
+                "No new table. Restart the API to load the route.",
+                "Aucune nouvelle table. Redémarre l’API pour charger la route."
+            )
+            .into(),
+        );
         self.choose(
             ChoiceKind::RouteConfirm,
-            "Créer cette route ?",
-            &["Créer les fichiers", "Annuler"],
+            tr!("Create this route?", "Créer cette route ?"),
+            &[
+                tr!("Create files", "Créer les fichiers"),
+                tr!("Cancel", "Annuler"),
+            ],
             description,
             0,
         );
@@ -249,8 +332,11 @@ impl App {
         let request = self
             .routes
             .get(self.route_selected)
-            .context("Sélectionne une route")?;
-        let project = self.project.as_ref().context("Ouvre un projet d’abord")?;
+            .context(tr!("Select a route", "Sélectionne une route"))?;
+        let project = self
+            .project
+            .as_ref()
+            .context(tr!("Open a project first", "Ouvre un projet d’abord"))?;
         let path = if let Some(route) = project
             .routes
             .iter()
@@ -297,16 +383,38 @@ impl App {
             reply.method,
             reply
                 .status
-                .map_or("échec réseau".into(), |s| format!("HTTP {s}")),
+                .map_or(tr!("network failure", "échec réseau").into(), |s| format!(
+                    "HTTP {s}"
+                )),
             reply.elapsed_ms
         );
         if let Some(route) = self.unimplemented_route() {
             let mut guidance = vec![
-                "Route présente · action à implémenter (501).".into(),
-                "e : ouvrir sa fonction métier dans l’éditeur.".into(),
-                format!("Dossier : custom_routes/{}/", route.name),
-                "Fichier : service.rs · redémarrer après modification.".into(),
-                "Créer une table ne complète pas cette fonction.".into(),
+                tr!(
+                    "Route exists · action to implement (501).",
+                    "Route présente · action à implémenter (501)."
+                )
+                .into(),
+                tr!(
+                    "e: open its business function in your editor.",
+                    "e : ouvrir sa fonction métier dans l’éditeur."
+                )
+                .into(),
+                trf!(
+                    "Directory: custom_routes/{}/",
+                    "Dossier : custom_routes/{}/",
+                    route.name
+                ),
+                tr!(
+                    "File: service.rs · restart after editing.",
+                    "Fichier : service.rs · redémarrer après modification."
+                )
+                .into(),
+                tr!(
+                    "Creating a table does not implement this function.",
+                    "Créer une table ne complète pas cette fonction."
+                )
+                .into(),
             ];
             if let Some(resource) = route.resource.as_ref().and_then(|name| {
                 self.project
@@ -315,15 +423,35 @@ impl App {
                     .iter()
                     .find(|r| &r.name == name)
             }) {
-                guidance.push(format!("CRUD déjà généré : GET / POST {}", resource.path));
+                guidance.push(trf!(
+                    "Existing CRUD: GET / POST {}",
+                    "CRUD déjà généré : GET / POST {}",
+                    resource.path
+                ));
             } else {
-                guidance.push("a : créer un modèle / table avec son CRUD.".into());
+                guidance.push(
+                    tr!(
+                        "a: create a model / table with CRUD.",
+                        "a : créer un modèle / table avec son CRUD."
+                    )
+                    .into(),
+                );
             }
-            guidance.extend([String::new(), "Réponse reçue de l’API :".into()]);
+            guidance.extend([
+                String::new(),
+                tr!(
+                    "Response received from the API:",
+                    "Réponse reçue de l’API :"
+                )
+                .into(),
+            ]);
             guidance.append(&mut self.tester.lines);
             self.tester.lines = guidance;
-            self.notice =
-                "HTTP 501 • route présente, métier à compléter • e : ouvrir service.rs".into();
+            self.notice = tr!(
+                "HTTP 501 • route exists, business logic to implement • e: open service.rs",
+                "HTTP 501 • route présente, métier à compléter • e : ouvrir service.rs"
+            )
+            .into();
         }
         self.log(self.notice.clone());
     }
@@ -333,7 +461,7 @@ impl App {
             .logs
             .iter()
             .rev()
-            .find_map(|line| line.strip_prefix("[Création de route] Error: "))
+            .find_map(|line| line.strip_prefix("[route] Error: "))
         else {
             return;
         };
@@ -341,6 +469,7 @@ impl App {
             "Le template a changé",
             "Template changed",
             "Ce template ne permet pas",
+            "This template does not support",
         ]
         .iter()
         .any(|message| error.contains(message))
@@ -349,13 +478,13 @@ impl App {
         }
         self.choose(
             ChoiceKind::RouteRecovery,
-            "Template à mettre à jour",
-            &["Mettre à jour les templates", "Réessayer la route", "Annuler"],
+            tr!("Template update required", "Template à mettre à jour"),
+            &[tr!("Update templates", "Mettre à jour les templates"), tr!("Retry route", "Réessayer la route"), tr!("Cancel", "Annuler")],
             vec![
-                "Ta route est conservée dans le formulaire.".into(),
-                "Mets à jour les templates pour créer de nouvelles routes.".into(),
-                "Le code et les migrations existants sont conservés.".into(),
-                "Les anciens modèles gardent leur template : sa version exacte reste nécessaire pour les modifier.".into(),
+                tr!("Your route is preserved in the form.", "Ta route est conservée dans le formulaire.").into(),
+                tr!("Update templates to create new routes.", "Mets à jour les templates pour créer de nouvelles routes.").into(),
+                tr!("Existing code and migrations are preserved.", "Le code et les migrations existants sont conservés.").into(),
+                tr!("Older models keep their template: its exact version is still needed to edit them.", "Les anciens modèles gardent leur template : sa version exacte reste nécessaire pour les modifier.").into(),
             ],
             0,
         );
@@ -424,9 +553,8 @@ mod tests {
             method: "GET".into(),
             ..Default::default()
         };
-        app.logs.push_back(
-            "[Création de route] Error: Le template a changé depuis la création du projet.".into(),
-        );
+        app.logs
+            .push_back("[route] Error: Le template a changé depuis la création du projet.".into());
         app.route_creation_failed();
         assert!(matches!(
             app.dialog,
@@ -483,7 +611,7 @@ mod tests {
             app.tester
                 .lines
                 .iter()
-                .any(|s| s.contains("action à implémenter"))
+                .any(|s| s.contains(tr!("action to implement", "action à implémenter")))
         );
         assert_eq!(app.tester.reply.as_ref().unwrap().body, "server reply");
         app.focus = Focus::Response;

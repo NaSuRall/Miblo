@@ -34,6 +34,7 @@ pub(super) enum ChoiceKind {
     RouteBody,
     RouteConfirm,
     Palette,
+    Language,
     Source,
     FieldType,
     NextField,
@@ -104,11 +105,20 @@ pub(super) struct TemplateDraft {
 
 impl App {
     pub(super) fn start_route_test(&mut self) -> Result<()> {
-        ensure!(!self.tester.pending, "Une requête HTTP est déjà en cours");
+        ensure!(
+            !self.tester.pending,
+            trf!(
+                "An HTTP request is already running",
+                "Une requête HTTP est déjà en cours"
+            )
+        );
         self.request_draft = self
             .routes
             .get(self.route_selected)
-            .context("Ouvre un projet pour tester ses routes")?
+            .context(tr!(
+                "Open a project to test its routes",
+                "Ouvre un projet pour tester ses routes"
+            ))?
             .clone();
         self.show_schema = false;
         if http::needs_body_form(self.project.as_ref(), &self.request_draft) {
@@ -118,19 +128,31 @@ impl App {
         // Every request exposes its path, including query parameters, before sending.
         self.input(
             InputKind::HttpPath,
-            "Chemin HTTP — remplace les paramètres par tes valeurs",
+            tr!(
+                "HTTP path — replace parameters with your values",
+                "Chemin HTTP — remplace les paramètres par tes valeurs"
+            ),
             &http::sample_path(&self.request_draft.path),
         );
         Ok(())
     }
     pub(super) fn custom_request(&mut self) -> Result<()> {
-        ensure!(self.project.is_some(), "Ouvre un projet d’abord");
+        ensure!(
+            self.project.is_some(),
+            trf!("Open a project first", "Ouvre un projet d’abord")
+        );
         self.show_schema = false;
-        ensure!(!self.tester.pending, "Une requête HTTP est déjà en cours");
+        ensure!(
+            !self.tester.pending,
+            trf!(
+                "An HTTP request is already running",
+                "Une requête HTTP est déjà en cours"
+            )
+        );
         self.request_draft = http::Request::default();
         self.choose(
             ChoiceKind::HttpMethod,
-            "Méthode HTTP",
+            tr!("HTTP method", "Méthode HTTP"),
             &["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"],
             vec![format!("API : {}", self.base_url)],
             0,
@@ -142,12 +164,16 @@ impl App {
         if self.request_draft.writes() {
             self.choose(
                 ChoiceKind::HttpConfirm,
-                "Envoyer cette requête ?",
-                &["Envoyer", "Annuler"],
+                tr!("Send this request?", "Envoyer cette requête ?"),
+                &[tr!("Send", "Envoyer"), tr!("Cancel", "Annuler")],
                 vec![
                     format!("{} {}", self.request_draft.method, self.request_draft.path),
                     format!("API : {}", self.base_url),
-                    "Cette requête peut modifier les données de cette API.".into(),
+                    tr!(
+                        "This request may change data in this API.",
+                        "Cette requête peut modifier les données de cette API."
+                    )
+                    .into(),
                 ],
                 1,
             );
@@ -159,15 +185,20 @@ impl App {
     pub(super) fn launch_request(&mut self) -> Result<()> {
         ensure!(
             self.job.is_none(),
-            "Attends la fin de l’action avant de tester la route"
+            trf!(
+                "Wait for the current action before testing the route",
+                "Attends la fin de l’action avant de tester la route"
+            )
         );
         self.tester
             .start(&self.base_url, self.request_draft.clone())?;
         self.dialog = None;
         self.focus = Focus::Response;
-        self.notice = format!(
+        self.notice = trf!(
+            "{} {} · request in progress…",
             "{} {} · requête en cours…",
-            self.request_draft.method, self.request_draft.path
+            self.request_draft.method,
+            self.request_draft.path
         );
         Ok(())
     }
@@ -198,29 +229,54 @@ impl App {
     pub(super) fn palette(&mut self) {
         self.choose(
             ChoiceKind::Palette,
-            "Actions",
+            tr!("Actions", "Actions"),
             &[
-                "Créer une API",
-                "Ouvrir un projet",
-                "Ajouter un modèle / une table + CRUD",
-                "Lancer l’API",
-                "Arrêter l’API",
-                "Vérifier la compilation",
-                "Exécuter les tests",
-                "Diagnostic du projet",
-                "Ouvrir le fichier dans mon éditeur",
-                "Actualiser les fichiers",
-                "Changer de thème",
-                "Aide",
-                "Quitter",
-                "Base de données : connexion / migrations",
-                "Tester la route sélectionnée",
-                "Requête HTTP personnalisée",
-                "Afficher / masquer l’aperçu du code",
-                "Voir le schéma de la base de données",
-                "Mettre à jour les templates des futurs modèles et routes",
-                "Modifier un modèle existant : champs / relations",
-                "Créer une route de modèle / personnalisée",
+                tr!("Create an API", "Créer une API"),
+                tr!("Open a project", "Ouvrir un projet"),
+                tr!(
+                    "Add a model / table + CRUD",
+                    "Ajouter un modèle / une table + CRUD"
+                ),
+                tr!("Start the API", "Lancer l’API"),
+                tr!("Stop the API", "Arrêter l’API"),
+                tr!("Check compilation", "Vérifier la compilation"),
+                tr!("Run tests", "Exécuter les tests"),
+                tr!("Project diagnostics", "Diagnostic du projet"),
+                tr!(
+                    "Open file in my editor",
+                    "Ouvrir le fichier dans mon éditeur"
+                ),
+                tr!("Refresh files", "Actualiser les fichiers"),
+                tr!("Change theme", "Changer de thème"),
+                tr!("Help", "Aide"),
+                tr!("Quit", "Quitter"),
+                tr!(
+                    "Database: connection / migrations",
+                    "Base de données : connexion / migrations"
+                ),
+                tr!("Test selected route", "Tester la route sélectionnée"),
+                tr!("Custom HTTP request", "Requête HTTP personnalisée"),
+                tr!(
+                    "Show / hide code preview",
+                    "Afficher / masquer l’aperçu du code"
+                ),
+                tr!(
+                    "View database schema",
+                    "Voir le schéma de la base de données"
+                ),
+                tr!(
+                    "Update templates for new models and routes",
+                    "Mettre à jour les templates des futurs modèles et routes"
+                ),
+                tr!(
+                    "Edit an existing model: fields / relationships",
+                    "Modifier un modèle existant : champs / relations"
+                ),
+                tr!(
+                    "Create a model / custom route",
+                    "Créer une route de modèle / personnalisée"
+                ),
+                "Language / Langue",
             ],
             Vec::new(),
             0,
@@ -229,10 +285,17 @@ impl App {
     pub(super) fn start_new(&mut self) -> Result<()> {
         ensure!(
             self.job.is_none() && self.api.is_none() && !self.tester.pending,
-            "Arrête l’API et attends la fin de l’action avant de créer un autre projet"
+            trf!(
+                "Stop the API and wait for the current action before creating another project",
+                "Arrête l’API et attends la fin de l’action avant de créer un autre projet"
+            )
         );
         self.new_draft = NewDraft::default();
-        self.input(InputKind::NewName, "Nom de la nouvelle API", "my-api");
+        self.input(
+            InputKind::NewName,
+            tr!("New API name", "Nom de la nouvelle API"),
+            "my-api",
+        );
         Ok(())
     }
 
@@ -240,44 +303,77 @@ impl App {
         let local = self.new_draft.local_hint.is_some();
         self.choose(
             ChoiceKind::Source,
-            "Source du template",
+            tr!("Template source", "Source du template"),
             &[
-                "GitHub Releases — archive publiée requise",
+                tr!(
+                    "GitHub Releases — published archive required",
+                    "GitHub Releases — archive publiée requise"
+                ),
                 if local {
-                    "Dossier local — chemin proposé"
+                    tr!(
+                        "Local directory — suggested path",
+                        "Dossier local — chemin proposé"
+                    )
                 } else {
-                    "Dossier local"
+                    tr!("Local directory", "Dossier local")
                 },
-                "Serveur personnalisé — URL d’archive",
+                tr!(
+                    "Custom server — archive URL",
+                    "Serveur personnalisé — URL d’archive"
+                ),
             ],
             vec![
-                format!(
+                trf!(
+                    "Rust / Axum / {} • templates downloaded on demand",
                     "Rust / Axum / {} • templates téléchargés à la demande",
                     self.new_draft.database.name()
                 ),
-                "La source distante exige une archive .tar.gz et son .sha256.".into(),
+                tr!(
+                    "Remote sources require a .tar.gz archive and its .sha256 file.",
+                    "La source distante exige une archive .tar.gz et son .sha256."
+                )
+                .into(),
             ],
             0,
         );
     }
 
     pub(super) fn creation_failed(&mut self) {
-        self.notice = "Création échouée • Tu peux changer de source sans tout ressaisir".into();
+        self.notice = tr!(
+            "Creation failed • change the source without starting over",
+            "Création échouée • Tu peux changer de source sans tout ressaisir"
+        )
+        .into();
         let error = self
             .logs
             .iter()
             .rev()
-            .find_map(|line| line.strip_prefix("[Création] Error: "))
-            .unwrap_or("Consulte les logs pour le détail de l’erreur.")
+            .find_map(|line| line.strip_prefix("[create] Error: "))
+            .unwrap_or(tr!(
+                "Check the logs for error details.",
+                "Consulte les logs pour le détail de l’erreur."
+            ))
             .to_owned();
         self.choose(
             ChoiceKind::NewRetry,
-            "La création a échoué",
-            &["Changer de source du template", "Réessayer", "Annuler"],
+            tr!("Creation failed", "La création a échoué"),
+            &[
+                tr!("Change template source", "Changer de source du template"),
+                tr!("Retry", "Réessayer"),
+                tr!("Cancel", "Annuler"),
+            ],
             vec![
-                "Le nom, le dossier et le port ont été conservés.".into(),
+                tr!(
+                    "The name, directory and port have been kept.",
+                    "Le nom, le dossier et le port ont été conservés."
+                )
+                .into(),
                 error,
-                "Si la release est introuvable, choisis un dossier local.".into(),
+                tr!(
+                    "If the release is unavailable, choose a local directory.",
+                    "Si la release est introuvable, choisis un dossier local."
+                )
+                .into(),
             ],
             0,
         );
@@ -288,7 +384,10 @@ impl App {
         self.add_draft = AddDraft::default();
         self.input(
             InputKind::ResourceName,
-            "Nom du modèle (ex. User ou Product)",
+            tr!(
+                "Model name (e.g. User or Product)",
+                "Nom du modèle (ex. User ou Product)"
+            ),
             "",
         );
         Ok(())
@@ -297,19 +396,31 @@ impl App {
     pub(super) fn start_model_edit(&mut self) -> Result<()> {
         ensure!(
             self.api.is_none(),
-            "Arrête l’API avec s avant de modifier un modèle"
+            trf!(
+                "Stop the API with s before editing a model",
+                "Arrête l’API avec s avant de modifier un modèle"
+            )
         );
         let (project, _) = generation::inspect(self.ready_for_job()?)?;
         ensure!(
             !project.resources.is_empty(),
-            "Ajoute d’abord un modèle avec a"
+            trf!(
+                "Add a model first with a",
+                "Ajoute d’abord un modèle avec a"
+            )
         );
         let names: Vec<_> = project.resources.iter().map(|r| r.name.as_str()).collect();
         self.choose(
             ChoiceKind::EditModel,
-            "Modifier un modèle existant",
+            tr!("Edit an existing model", "Modifier un modèle existant"),
             &names,
-            vec!["Ajout de champs / relations facultatifs, sans supprimer les données.".into()],
+            vec![
+                tr!(
+                    "Add optional fields / relationships without deleting data.",
+                    "Ajout de champs / relations facultatifs, sans supprimer les données."
+                )
+                .into(),
+            ],
             self.resource_selected.min(names.len() - 1),
         );
         self.project = Some(project);
@@ -333,19 +444,35 @@ impl App {
     }
 
     fn confirm_model_edit(&mut self) -> Result<()> {
-        let project = self.project.as_ref().context("Aucun projet")?;
+        let project = self
+            .project
+            .as_ref()
+            .context(tr!("No project", "Aucun projet"))?;
         let resource = self.draft_resource(&self.add_draft.path);
         self.validate_draft_fields(&resource.fields)?;
         let sql = generation::alteration_sql(&resource, &resource.fields, project.database())?;
         let mut description = vec![
-            format!(
+            trf!(
+                "{} · {} new field(s)",
                 "{} · {} nouveau(x) champ(s)",
                 resource.name,
                 resource.fields.len()
             ),
-            "Lignes conservées ; les nouveaux champs contiendront NULL.".into(),
-            "Fusion du code personnalisé et sauvegarde des fichiers remplacés.".into(),
-            "Une migration sera créée. Applique-la ensuite avec b → migrations.".into(),
+            tr!(
+                "Existing rows are preserved; new fields will contain NULL.",
+                "Lignes conservées ; les nouveaux champs contiendront NULL."
+            )
+            .into(),
+            tr!(
+                "Custom code is merged and replaced files are backed up.",
+                "Fusion du code personnalisé et sauvegarde des fichiers remplacés."
+            )
+            .into(),
+            tr!(
+                "A migration will be created. Apply it with b → migrations.",
+                "Une migration sera créée. Applique-la ensuite avec b → migrations."
+            )
+            .into(),
         ];
         description.extend(
             sql.lines()
@@ -354,8 +481,17 @@ impl App {
         );
         self.choose(
             ChoiceKind::EditConfirm,
-            "Générer la modification du modèle ?",
-            &["Générer la migration et le code", "Annuler"],
+            tr!(
+                "Generate the model update?",
+                "Générer la modification du modèle ?"
+            ),
+            &[
+                tr!(
+                    "Generate migration and code",
+                    "Générer la migration et le code"
+                ),
+                tr!("Cancel", "Annuler"),
+            ],
             description,
             0,
         );
@@ -372,7 +508,11 @@ impl App {
         if key.code == KeyCode::Esc {
             self.resume_route_after_template_update = false;
             self.db_draft.password.clear();
-            self.notice = "Action annulée • Aucun fichier modifié".into();
+            self.notice = tr!(
+                "Action cancelled • No files changed",
+                "Action annulée • Aucun fichier modifié"
+            )
+            .into();
             return Ok(());
         }
         let previous = dialog.clone();
@@ -497,51 +637,89 @@ impl App {
                 let path = std::env::current_dir()?.join(value);
                 self.input(
                     InputKind::NewOutput,
-                    "Dossier à créer",
+                    tr!("Directory to create", "Dossier à créer"),
                     &path.to_string_lossy(),
                 );
             }
             InputKind::NewOutput => {
-                ensure!(!value.is_empty(), "Indique le dossier à créer");
+                ensure!(
+                    !value.is_empty(),
+                    trf!(
+                        "Enter the directory to create",
+                        "Indique le dossier à créer"
+                    )
+                );
                 let path = std::env::current_dir()?.join(value);
                 ensure!(
                     path.symlink_metadata()
                         .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
-                    "Ce dossier existe déjà ou est inaccessible"
+                    trf!(
+                        "This directory already exists or cannot be accessed",
+                        "Ce dossier existe déjà ou est inaccessible"
+                    )
                 );
                 ensure!(
                     path.parent().is_some_and(Path::is_dir),
-                    "Le dossier parent doit exister"
+                    trf!(
+                        "The parent directory must exist",
+                        "Le dossier parent doit exister"
+                    )
                 );
                 self.new_draft.output = path;
-                self.input(InputKind::NewPort, "Port du serveur", "3000");
+                self.input(
+                    InputKind::NewPort,
+                    tr!("Server port", "Port du serveur"),
+                    "3000",
+                );
             }
             InputKind::NewPort => {
-                let port = value
-                    .parse::<u16>()
-                    .context("Choisis un port entre 1 et 65535")?;
-                ensure!(port > 0, "Le port doit être supérieur à zéro");
+                let port = value.parse::<u16>().context(tr!(
+                    "Choose a port between 1 and 65535",
+                    "Choisis un port entre 1 et 65535"
+                ))?;
+                ensure!(
+                    port > 0,
+                    trf!(
+                        "The port must be greater than zero",
+                        "Le port doit être supérieur à zéro"
+                    )
+                );
                 self.new_draft.port = port;
                 self.choose(
                     ChoiceKind::Database,
-                    "Base de données",
+                    tr!("Database", "Base de données"),
                     &[
-                        "SQLite — fichier local, configuration automatique",
-                        "MySQL — connexion à un serveur",
+                        tr!(
+                            "SQLite — local file, automatic setup",
+                            "SQLite — fichier local, configuration automatique"
+                        ),
+                        tr!(
+                            "MySQL — connect to a server",
+                            "MySQL — connexion à un serveur"
+                        ),
                     ],
                     vec![
-                        "Chaque modèle générera sa table SQL, son modèle Rust et son CRUD.".into(),
+                        tr!(
+                            "Each model generates a SQL table, a Rust model and CRUD routes.",
+                            "Chaque modèle générera sa table SQL, son modèle Rust et son CRUD."
+                        )
+                        .into(),
                     ],
                     0,
                 );
             }
             InputKind::NewLocal => {
-                let pack = crate::templates::Pack::local(Path::new(value))
-                    .context("Pack local invalide : choisis le dossier complet du template")?;
+                let pack = crate::templates::Pack::local(Path::new(value)).context(tr!(
+                    "Invalid local pack: choose the complete template directory",
+                    "Pack local invalide : choisis le dossier complet du template"
+                ))?;
                 ensure!(
                     pack.id == self.new_draft.database.stack(),
-                    "Ce template utilise une autre base ; choisis un pack {}",
-                    self.new_draft.database.name()
+                    trf!(
+                        "This template uses another database; choose a {} pack",
+                        "Ce template utilise une autre base ; choisis un pack {}",
+                        self.new_draft.database.name()
+                    )
                 );
                 self.new_draft.location = Path::new(value)
                     .canonicalize()?
@@ -551,12 +729,15 @@ impl App {
                 self.confirm_new();
             }
             InputKind::NewUrl => {
-                let url = reqwest::Url::parse(value).context("URL invalide")?;
+                let url = reqwest::Url::parse(value).context(tr!("Invalid URL", "URL invalide"))?;
                 ensure!(
                     url.scheme() == "https"
                         || (url.scheme() == "http"
                             && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))),
-                    "Utilise HTTPS (ou HTTP sur loopback pour les tests)"
+                    trf!(
+                        "Use HTTPS (or loopback HTTP for tests)",
+                        "Utilise HTTPS (ou HTTP sur loopback pour les tests)"
+                    )
                 );
                 self.new_draft.location = value.into();
                 self.confirm_new();
@@ -569,13 +750,19 @@ impl App {
                         .resources
                         .iter()
                         .any(|r| r.module() == resource.module() || r.table() == resource.table())),
-                    "Cette ressource ou sa table existe déjà"
+                    trf!(
+                        "This model or its table already exists",
+                        "Cette ressource ou sa table existe déjà"
+                    )
                 );
                 self.add_draft.name = value.into();
                 self.add_draft.path = resource.path;
                 self.input(
                     InputKind::FieldName,
-                    "Nom du champ — id est automatique",
+                    tr!(
+                        "Field name — id is automatic",
+                        "Nom du champ — id est automatique"
+                    ),
                     "",
                 );
             }
@@ -587,14 +774,20 @@ impl App {
                 self.add_draft.pending = Some(field);
                 self.choose(
                     ChoiceKind::FieldType,
-                    "Type du champ",
+                    tr!("Field type", "Type du champ"),
                     &[
-                        "Texte court (255 caractères)",
-                        "Texte long",
-                        "Nombre entier",
-                        "Nombre décimal",
-                        "Oui / Non",
-                        "Clé étrangère — relation vers un modèle",
+                        tr!(
+                            "Short text (255 characters)",
+                            "Texte court (255 caractères)"
+                        ),
+                        tr!("Long text", "Texte long"),
+                        tr!("Integer", "Nombre entier"),
+                        tr!("Decimal number", "Nombre décimal"),
+                        tr!("Yes / No", "Oui / Non"),
+                        tr!(
+                            "Foreign key — relationship to a model",
+                            "Clé étrangère — relation vers un modèle"
+                        ),
                     ],
                     Vec::new(),
                     0,
@@ -608,7 +801,10 @@ impl App {
                         .project
                         .as_ref()
                         .is_some_and(|p| p.resources.iter().any(|r| r.path == value)),
-                    "Cette adresse est déjà utilisée"
+                    trf!(
+                        "This path is already in use",
+                        "Cette adresse est déjà utilisée"
+                    )
                 );
                 self.add_draft.path = value.into();
                 let mut description = vec![format!("{} → {}", resource.name, resource.path)];
@@ -617,9 +813,17 @@ impl App {
                         "{} : {:?}{}{}{}{}",
                         f.name,
                         f.kind,
-                        if f.nullable { " • facultatif" } else { "" },
+                        if f.nullable {
+                            tr!(" • optional", " • facultatif")
+                        } else {
+                            ""
+                        },
                         if f.unique { " • unique" } else { "" },
-                        if f.private { " • privé" } else { "" },
+                        if f.private {
+                            tr!(" • private", " • privé")
+                        } else {
+                            ""
+                        },
                         f.references.as_ref().map_or(String::new(), |r| format!(
                             " → {}.id · {}",
                             r.resource,
@@ -627,8 +831,15 @@ impl App {
                         ))
                     )
                 }));
-                description.push("Les fichiers existants seront préservés.".into());
-                description.push(format!(
+                description.push(
+                    tr!(
+                        "Existing files will be preserved.",
+                        "Les fichiers existants seront préservés."
+                    )
+                    .into(),
+                );
+                description.push(trf!(
+                    "SQL table: {} • Rust model + CRUD routes",
                     "Table SQL : {} • modèle Rust + routes CRUD",
                     resource.table()
                 ));
@@ -639,16 +850,22 @@ impl App {
                         .is_some_and(|p| p.database() == Database::Sqlite)
                         && self.api.is_none()
                     {
-                        "SQLite : les migrations en attente seront appliquées automatiquement."
+                        tr!(
+                            "SQLite: pending migrations will be applied automatically.",
+                            "SQLite : les migrations en attente seront appliquées automatiquement."
+                        )
                     } else {
-                        "Applique la migration avec b ou au prochain lancement de l’API."
+                        tr!(
+                            "Apply the migration with b or the next time the API starts.",
+                            "Applique la migration avec b ou au prochain lancement de l’API."
+                        )
                     }
                     .into(),
                 );
                 self.choose(
                     ChoiceKind::AddConfirm,
-                    "Ajouter cette ressource ?",
-                    &["Générer", "Annuler"],
+                    tr!("Add this model?", "Ajouter cette ressource ?"),
+                    &[tr!("Generate", "Générer"), tr!("Cancel", "Annuler")],
                     description,
                     0,
                 );
@@ -658,7 +875,7 @@ impl App {
                     .add_draft
                     .pending
                     .clone()
-                    .context("Relation manquante")?;
+                    .context(tr!("Missing relationship", "Relation manquante"))?;
                 field.name = value.into();
                 let mut fields = self.add_draft.fields.clone();
                 fields.push(field.clone());
@@ -670,11 +887,17 @@ impl App {
                 let pack = crate::templates::Pack::local(Path::new(value))?;
                 ensure!(
                     self.project.as_ref().is_some_and(|p| p.stack == pack.id),
-                    "Choisis un template pour la même base de données"
+                    trf!(
+                        "Choose a template for the same database engine",
+                        "Choisis un template pour la même base de données"
+                    )
                 );
                 ensure!(
                     pack.features.iter().any(|f| f == "relations"),
-                    "Ce template ne prend pas en charge les relations"
+                    trf!(
+                        "This template does not support relationships",
+                        "Ce template ne prend pas en charge les relations"
+                    )
                 );
                 self.template_draft.location = Path::new(value)
                     .canonicalize()?
@@ -688,7 +911,7 @@ impl App {
                     url.scheme() == "https"
                         || (url.scheme() == "http"
                             && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))),
-                    "Utilise HTTPS (ou HTTP local)"
+                    trf!("Use HTTPS (or local HTTP)", "Utilise HTTPS (ou HTTP local)")
                 );
                 self.template_draft.location = value.into();
                 self.confirm_template_update();
@@ -704,21 +927,32 @@ impl App {
                 }
             }
             InputKind::DbHost => {
-                ensure!(!value.is_empty(), "Indique le serveur MySQL");
+                ensure!(
+                    !value.is_empty(),
+                    trf!("Enter the MySQL server", "Indique le serveur MySQL")
+                );
                 self.db_draft.host = value.into();
                 self.input(
                     InputKind::DbPort,
-                    "Port MySQL",
+                    tr!("MySQL port", "Port MySQL"),
                     &self.db_draft.port.to_string(),
                 );
             }
             InputKind::DbPort => {
-                let port = value.parse::<u16>().context("Port MySQL invalide")?;
-                ensure!(port > 0, "Le port doit être supérieur à zéro");
+                let port = value
+                    .parse::<u16>()
+                    .context(tr!("Invalid MySQL port", "Port MySQL invalide"))?;
+                ensure!(
+                    port > 0,
+                    trf!(
+                        "The port must be greater than zero",
+                        "Le port doit être supérieur à zéro"
+                    )
+                );
                 self.db_draft.port = port;
                 self.input(
                     InputKind::DbName,
-                    "Nom de la base MySQL",
+                    tr!("MySQL database name", "Nom de la base MySQL"),
                     &self.db_draft.database.clone(),
                 );
             }
@@ -729,21 +963,27 @@ impl App {
                         && value
                             .bytes()
                             .all(|c| c.is_ascii_alphanumeric() || c == b'_'),
-                    "Nom de base invalide : lettres, chiffres et underscores"
+                    trf!(
+                        "Invalid database name: use letters, digits and underscores",
+                        "Nom de base invalide : lettres, chiffres et underscores"
+                    )
                 );
                 self.db_draft.database = value.into();
                 self.input(
                     InputKind::DbUser,
-                    "Utilisateur MySQL",
+                    tr!("MySQL user", "Utilisateur MySQL"),
                     &self.db_draft.username.clone(),
                 );
             }
             InputKind::DbUser => {
-                ensure!(!value.is_empty(), "Indique un utilisateur");
+                ensure!(
+                    !value.is_empty(),
+                    trf!("Enter a user", "Indique un utilisateur")
+                );
                 self.db_draft.username = value.into();
                 self.input(
                     InputKind::DbPassword,
-                    "Mot de passe MySQL (masqué)",
+                    tr!("MySQL password (hidden)", "Mot de passe MySQL (masqué)"),
                     &self.db_draft.password.clone(),
                 );
             }
@@ -752,16 +992,37 @@ impl App {
                 self.db_draft.url()?;
                 self.choose(
                     ChoiceKind::DbSave,
-                    "Enregistrer la connexion MySQL ?",
-                    &["Enregistrer dans .env et tester", "Annuler"],
+                    tr!(
+                        "Save the MySQL connection?",
+                        "Enregistrer la connexion MySQL ?"
+                    ),
+                    &[
+                        tr!("Save to .env and test", "Enregistrer dans .env et tester"),
+                        tr!("Cancel", "Annuler"),
+                    ],
                     vec![
-                        format!("Serveur : {}:{}", self.db_draft.host, self.db_draft.port),
-                        format!(
-                            "Base : {} • utilisateur : {}",
-                            self.db_draft.database, self.db_draft.username
+                        trf!(
+                            "Server: {}:{}",
+                            "Serveur : {}:{}",
+                            self.db_draft.host,
+                            self.db_draft.port
                         ),
-                        "Mot de passe masqué • les autres réglages .env sont conservés".into(),
-                        "Le serveur MySQL doit être installé et accessible.".into(),
+                        trf!(
+                            "Database: {} • user: {}",
+                            "Base : {} • utilisateur : {}",
+                            self.db_draft.database,
+                            self.db_draft.username
+                        ),
+                        tr!(
+                            "Password hidden • other .env settings are preserved",
+                            "Mot de passe masqué • les autres réglages .env sont conservés"
+                        )
+                        .into(),
+                        tr!(
+                            "The MySQL server must be installed and accessible.",
+                            "Le serveur MySQL doit être installé et accessible."
+                        )
+                        .into(),
                     ],
                     0,
                 );
@@ -772,6 +1033,11 @@ impl App {
 
     fn submit_choice(&mut self, kind: ChoiceKind, selected: usize) -> Result<()> {
         match kind {
+            ChoiceKind::Language => self.change_language(if selected == 0 {
+                crate::i18n::Language::En
+            } else {
+                crate::i18n::Language::Fr
+            })?,
             ChoiceKind::RouteRecovery => {
                 if selected == 0 {
                     self.start_template_update()?;
@@ -779,7 +1045,8 @@ impl App {
                 } else if selected == 1 {
                     self.confirm_route();
                 } else {
-                    self.notice = "Création de route annulée".into();
+                    self.notice =
+                        tr!("Route creation cancelled", "Création de route annulée").into();
                 }
             }
             ChoiceKind::RouteResource
@@ -810,6 +1077,7 @@ impl App {
                     "templates",
                     "model",
                     "route-new",
+                    "language",
                 ][selected],
             )?,
             ChoiceKind::EditModel => {
@@ -817,7 +1085,7 @@ impl App {
                     .project
                     .as_ref()
                     .and_then(|p| p.resources.get(selected))
-                    .context("Modèle manquant")?
+                    .context(tr!("Missing model", "Modèle manquant"))?
                     .clone();
                 self.add_draft = AddDraft {
                     name: resource.name.clone(),
@@ -825,7 +1093,8 @@ impl App {
                     editing: true,
                     ..Default::default()
                 };
-                let mut description = vec![format!(
+                let mut description = vec![trf!(
+                    "{} → {} · id: primary key",
                     "{} → {} · id : clé primaire",
                     resource.name,
                     resource.table()
@@ -833,26 +1102,36 @@ impl App {
                 description.extend(resource.fields.iter().map(Field::argument));
                 self.choose(
                     ChoiceKind::EditAction,
-                    "Modifier le modèle — champs existants",
+                    tr!(
+                        "Edit model — existing fields",
+                        "Modifier le modèle — champs existants"
+                    ),
                     &[
-                        "Ajouter un champ facultatif",
-                        "Ajouter une relation facultative",
-                        "Annuler",
+                        tr!("Add an optional field", "Ajouter un champ facultatif"),
+                        tr!(
+                            "Add an optional relationship",
+                            "Ajouter une relation facultative"
+                        ),
+                        tr!("Cancel", "Annuler"),
                     ],
                     description,
                     0,
                 );
             }
             ChoiceKind::EditAction => match selected {
-                0 => self.input(InputKind::FieldName, "Nom du nouveau champ facultatif", ""),
+                0 => self.input(
+                    InputKind::FieldName,
+                    tr!("New optional field name", "Nom du nouveau champ facultatif"),
+                    "",
+                ),
                 1 => self.choose_relation_target()?,
-                _ => self.notice = "Modification annulée".into(),
+                _ => self.notice = tr!("Update cancelled", "Modification annulée").into(),
             },
             ChoiceKind::EditConfirm => {
                 if selected == 0 {
                     self.generate_resource()?;
                 } else {
-                    self.notice = "Modification annulée".into();
+                    self.notice = tr!("Update cancelled", "Modification annulée").into();
                 }
             }
             ChoiceKind::HttpMethod => {
@@ -865,7 +1144,10 @@ impl App {
                 };
                 self.input(
                     InputKind::HttpPath,
-                    "Chemin HTTP (ex. /users/1?limit=10)",
+                    tr!(
+                        "HTTP path (e.g. /users/1?limit=10)",
+                        "Chemin HTTP (ex. /users/1?limit=10)"
+                    ),
                     &self.request_draft.path.clone(),
                 );
             }
@@ -873,7 +1155,11 @@ impl App {
                 if selected == 0 {
                     self.launch_request()?;
                 } else {
-                    self.notice = "Requête annulée · aucune requête envoyée".into();
+                    self.notice = tr!(
+                        "Request cancelled · nothing sent",
+                        "Requête annulée · aucune requête envoyée"
+                    )
+                    .into();
                 }
             }
             ChoiceKind::Database => {
@@ -902,7 +1188,7 @@ impl App {
                     0 => self.confirm_new(),
                     1 => self.input(
                         InputKind::NewLocal,
-                        "Dossier du template",
+                        tr!("Template directory", "Dossier du template"),
                         &self
                             .new_draft
                             .local_hint
@@ -910,7 +1196,11 @@ impl App {
                             .map(|path| path.to_string_lossy().into_owned())
                             .unwrap_or_default(),
                     ),
-                    _ => self.input(InputKind::NewUrl, "URL du template .tar.gz", ""),
+                    _ => self.input(
+                        InputKind::NewUrl,
+                        tr!("Template .tar.gz URL", "URL du template .tar.gz"),
+                        "",
+                    ),
                 }
             }
             ChoiceKind::FieldType if selected == 5 => self.choose_relation_target()?,
@@ -918,7 +1208,7 @@ impl App {
                 let target = self
                     .relation_targets()
                     .get(selected)
-                    .context("Modèle cible manquant")?
+                    .context(tr!("Missing target model", "Modèle cible manquant"))?
                     .clone();
                 let mut field = self
                     .add_draft
@@ -932,18 +1222,22 @@ impl App {
                 });
                 let name = field.name.clone();
                 self.add_draft.pending = Some(field);
-                self.input(InputKind::RelationName, "Nom de la clé étrangère", &name);
+                self.input(
+                    InputKind::RelationName,
+                    tr!("Foreign key name", "Nom de la clé étrangère"),
+                    &name,
+                );
             }
             ChoiceKind::RelationDelete => {
                 let mut field = self
                     .add_draft
                     .pending
                     .clone()
-                    .context("Relation manquante")?;
+                    .context(tr!("Missing relationship", "Relation manquante"))?;
                 field
                     .references
                     .as_mut()
-                    .context("Relation manquante")?
+                    .context(tr!("Missing relationship", "Relation manquante"))?
                     .on_delete =
                     [OnDelete::Restrict, OnDelete::Cascade, OnDelete::SetNull][selected];
                 self.store_field(field)?;
@@ -954,19 +1248,26 @@ impl App {
                     0 => self.confirm_template_update(),
                     1 => {
                         let root = self.ready_for_job()?;
-                        let database = self.project.as_ref().context("Aucun projet")?.database();
+                        let database = self
+                            .project
+                            .as_ref()
+                            .context(tr!("No project", "Aucun projet"))?
+                            .database();
                         let path = crate::templates::discover_local(root, database)
                             .map(|p| p.to_string_lossy().into_owned())
                             .unwrap_or_default();
                         self.input(
                             InputKind::TemplateLocal,
-                            "Dossier du nouveau template",
+                            tr!("New template directory", "Dossier du nouveau template"),
                             &path,
                         );
                     }
                     _ => self.input(
                         InputKind::TemplateUrl,
-                        "URL du template 0.6.0 (.tar.gz)",
+                        tr!(
+                            "Template 0.6.0 URL (.tar.gz)",
+                            "URL du template 0.6.0 (.tar.gz)"
+                        ),
                         "",
                     ),
                 }
@@ -990,13 +1291,17 @@ impl App {
                             crate::templates::DEFAULT_BASE.into(),
                         ]),
                     }
-                    self.cli_job(args, "Templates", None, true)?;
+                    self.cli_job(args, JobKind::Templates, None, true)?;
                 } else {
                     self.resume_route_after_template_update = false;
                 }
             }
             ChoiceKind::FieldType => {
-                let field = self.add_draft.pending.as_mut().context("Champ manquant")?;
+                let field = self
+                    .add_draft
+                    .pending
+                    .as_mut()
+                    .context(tr!("Missing field", "Champ manquant"))?;
                 field.kind = [
                     FieldType::String,
                     FieldType::Text,
@@ -1007,28 +1312,28 @@ impl App {
                 self.field_options()?;
             }
             ChoiceKind::NextField => match selected {
-                0 => self.input(InputKind::FieldName, "Nom du champ", ""),
+                0 => self.input(InputKind::FieldName, tr!("Field name", "Nom du champ"), ""),
                 1 if self.add_draft.editing => self.confirm_model_edit()?,
                 1 => self.input(
                     InputKind::Collection,
-                    "Adresse de la collection",
+                    tr!("Collection path", "Adresse de la collection"),
                     &self.add_draft.path.clone(),
                 ),
                 3 => {
                     self.add_draft.pending = None;
                     self.choose_relation_target()?;
                 }
-                _ => self.notice = "Ajout annulé".into(),
+                _ => self.notice = tr!("Addition cancelled", "Ajout annulé").into(),
             },
             ChoiceKind::NewConfirm if selected == 0 => self.generate_new()?,
             ChoiceKind::NewRetry => match selected {
                 0 => self.choose_source(),
                 1 => self.generate_new()?,
-                _ => self.notice = "Création annulée".into(),
+                _ => self.notice = tr!("Creation cancelled", "Création annulée").into(),
             },
             ChoiceKind::AddConfirm if selected == 0 => self.generate_resource()?,
             ChoiceKind::NewConfirm | ChoiceKind::AddConfirm => {
-                self.notice = "Génération annulée".into()
+                self.notice = tr!("Generation cancelled", "Génération annulée").into()
             }
             ChoiceKind::DbMenu => match selected {
                 0 => self.database_action(Action::Check)?,
@@ -1068,7 +1373,11 @@ impl App {
         unique_available: bool,
         private_available: bool,
     ) -> Result<()> {
-        let mut field = self.add_draft.pending.clone().context("Champ manquant")?;
+        let mut field = self
+            .add_draft
+            .pending
+            .clone()
+            .context(tr!("Missing field", "Champ manquant"))?;
         field.nullable = self.add_draft.editing || items[0].1;
         let mut index = 1;
         if unique_available {
@@ -1080,20 +1389,40 @@ impl App {
         }
         if field.references.is_some() {
             let mut choices = vec![
-                "Bloquer la suppression si des lignes font référence (RESTRICT)",
-                "Supprimer aussi les lignes liées (CASCADE)",
+                tr!(
+                    "Block deletion if other rows reference it (RESTRICT)",
+                    "Bloquer la suppression si des lignes font référence (RESTRICT)"
+                ),
+                tr!(
+                    "Also delete related rows (CASCADE)",
+                    "Supprimer aussi les lignes liées (CASCADE)"
+                ),
             ];
             if field.nullable {
-                choices.push("Garder les lignes et vider le lien (SET NULL)");
+                choices.push(tr!(
+                    "Keep rows and clear the relationship (SET NULL)",
+                    "Garder les lignes et vider le lien (SET NULL)"
+                ));
             }
             self.add_draft.pending = Some(field);
             self.choose(
                 ChoiceKind::RelationDelete,
-                "Si la ligne référencée est supprimée…",
+                tr!(
+                    "When the referenced row is deleted…",
+                    "Si la ligne référencée est supprimée…"
+                ),
                 &choices,
                 vec![
-                    "La base appliquera cette règle automatiquement.".into(),
-                    "CASCADE supprime réellement les lignes liées.".into(),
+                    tr!(
+                        "The database enforces this rule automatically.",
+                        "La base appliquera cette règle automatiquement."
+                    )
+                    .into(),
+                    tr!(
+                        "CASCADE deletes the related rows.",
+                        "CASCADE supprime réellement les lignes liées."
+                    )
+                    .into(),
                 ],
                 0,
             );
@@ -1109,27 +1438,41 @@ impl App {
         self.add_draft.pending = None;
         self.choose(
             ChoiceKind::NextField,
-            "Champs de la ressource",
+            tr!("Model fields", "Champs de la ressource"),
             &[
-                "Ajouter un autre champ",
-                "Terminer et générer",
-                "Annuler",
-                "Ajouter une relation (clé étrangère)",
+                tr!("Add another field", "Ajouter un autre champ"),
+                tr!("Finish and generate", "Terminer et générer"),
+                tr!("Cancel", "Annuler"),
+                tr!(
+                    "Add a relationship (foreign key)",
+                    "Ajouter une relation (clé étrangère)"
+                ),
             ],
-            vec![format!("{} champ(s) définis", self.add_draft.fields.len())],
+            vec![trf!(
+                "{} field(s) defined",
+                "{} champ(s) définis",
+                self.add_draft.fields.len()
+            )],
             0,
         );
         Ok(())
     }
     fn field_options(&mut self) -> Result<()> {
-        let field = self.add_draft.pending.as_ref().context("Champ manquant")?;
+        let field = self
+            .add_draft
+            .pending
+            .as_ref()
+            .context(tr!("Missing field", "Champ manquant"))?;
         let unique_available = field.kind != FieldType::Text;
         let private_available = !field.private;
         let mut items = vec![(
             if self.add_draft.editing {
-                "Facultatif — anciennes lignes à NULL (fixé)"
+                tr!(
+                    "Optional — existing rows keep NULL (fixed)",
+                    "Facultatif — anciennes lignes à NULL (fixé)"
+                )
             } else {
-                "Facultatif — autoriser null"
+                tr!("Optional — allow null", "Facultatif — autoriser null")
             }
             .into(),
             self.add_draft.editing,
@@ -1137,18 +1480,35 @@ impl App {
         if unique_available {
             items.push((
                 if field.references.is_some() {
-                    "Unique — une seule ligne par référence (1 à 1)"
+                    tr!(
+                        "Unique — one row per reference (one-to-one)",
+                        "Unique — une seule ligne par référence (1 à 1)"
+                    )
                 } else {
-                    "Unique — interdire les doublons"
+                    tr!(
+                        "Unique — prevent duplicates",
+                        "Unique — interdire les doublons"
+                    )
                 }
                 .into(),
                 false,
             ));
         }
         if private_available {
-            items.push(("Privé — masquer dans les réponses".into(), false));
+            items.push((
+                tr!(
+                    "Private — hide in responses",
+                    "Privé — masquer dans les réponses"
+                )
+                .into(),
+                false,
+            ));
         } else {
-            self.notice = "Ce champ sensible sera masqué dans les réponses".into();
+            self.notice = tr!(
+                "This sensitive field will be hidden in responses",
+                "Ce champ sensible sera masqué dans les réponses"
+            )
+            .into();
         }
         self.dialog = Some(Dialog::Options {
             items,
@@ -1169,7 +1529,10 @@ impl App {
         models
     }
     fn choose_relation_target(&mut self) -> Result<()> {
-        ensure!(!self.add_draft.name.is_empty(), "Donne un nom au modèle");
+        ensure!(
+            !self.add_draft.name.is_empty(),
+            trf!("Give the model a name", "Donne un nom au modèle")
+        );
         let labels: Vec<_> = self
             .relation_targets()
             .iter()
@@ -1179,7 +1542,7 @@ impl App {
                     r.name,
                     r.table(),
                     if r.name == self.add_draft.name {
-                        " (ce modèle)"
+                        tr!(" (this model)", " (ce modèle)")
                     } else {
                         ""
                     }
@@ -1189,11 +1552,19 @@ impl App {
         let items: Vec<_> = labels.iter().map(String::as_str).collect();
         self.choose(
             ChoiceKind::RelationTarget,
-            "Modèle / table à référencer",
+            tr!("Model / table to reference", "Modèle / table à référencer"),
             &items,
             vec![
-                "La clé primaire id est automatique dans chaque table.".into(),
-                "Une clé étrangère impose l’existence de la ligne référencée.".into(),
+                tr!(
+                    "Every table has an automatic id primary key.",
+                    "La clé primaire id est automatique dans chaque table."
+                )
+                .into(),
+                tr!(
+                    "A foreign key requires the referenced row to exist.",
+                    "Une clé étrangère impose l’existence de la ligne référencée."
+                )
+                .into(),
             ],
             0,
         );
@@ -1205,15 +1576,29 @@ impl App {
         self.template_draft = TemplateDraft::default();
         self.choose(
             ChoiceKind::TemplateSource,
-            "Templates pour les futurs modèles et routes",
+            tr!(
+                "Templates for new models and routes",
+                "Templates pour les futurs modèles et routes"
+            ),
             &[
-                "GitHub Releases — version 0.6.0, routes CRUD de modèles",
-                "Dossier local",
-                "URL personnalisée",
+                tr!(
+                    "GitHub Releases — version 0.6.0, model CRUD routes",
+                    "GitHub Releases — version 0.6.0, routes CRUD de modèles"
+                ),
+                tr!("Local directory", "Dossier local"),
+                tr!("Custom URL", "URL personnalisée"),
             ],
             vec![
-                format!("Version actuelle : {}", state.template.version),
-                "Les fichiers existants et migrations appliquées sont conservés.".into(),
+                trf!(
+                    "Current version: {}",
+                    "Version actuelle : {}",
+                    state.template.version
+                ),
+                tr!(
+                    "Existing files and applied migrations are preserved.",
+                    "Les fichiers existants et migrations appliquées sont conservés."
+                )
+                .into(),
             ],
             0,
         );
@@ -1227,12 +1612,23 @@ impl App {
         };
         self.choose(
             ChoiceKind::TemplateConfirm,
-            "Utiliser ce template pour les futurs modèles et routes ?",
-            &["Mettre à jour", "Annuler"],
+            tr!(
+                "Use this template for new models and routes?",
+                "Utiliser ce template pour les futurs modèles et routes ?"
+            ),
+            &[tr!("Update", "Mettre à jour"), tr!("Cancel", "Annuler")],
             vec![
                 source,
-                "La configuration du template sera mise à jour.".into(),
-                "Le code existant et les migrations appliquées sont conservés.".into(),
+                tr!(
+                    "The template configuration will be updated.",
+                    "La configuration du template sera mise à jour."
+                )
+                .into(),
+                tr!(
+                    "Existing code and applied migrations are preserved.",
+                    "Le code existant et les migrations appliquées sont conservés."
+                )
+                .into(),
             ],
             0,
         );
@@ -1247,19 +1643,38 @@ impl App {
     fn confirm_new(&mut self) {
         self.choose(
             ChoiceKind::NewConfirm,
-            "Créer cette API ?",
-            &["Créer le projet", "Annuler"],
+            tr!("Create this API?", "Créer cette API ?"),
+            &[
+                tr!("Create project", "Créer le projet"),
+                tr!("Cancel", "Annuler"),
+            ],
             vec![
                 self.new_draft.name.clone(),
                 self.new_draft.output.display().to_string(),
                 format!("Rust / Axum / {}", self.new_draft.database.name()),
-                format!("Port : {}", self.new_draft.port),
+                trf!("Port: {}", "Port : {}", self.new_draft.port),
                 match self.new_draft.source {
-                    1 => format!("Template local : {}", self.new_draft.location),
-                    2 => format!("Template distant : {}", self.new_draft.location),
-                    _ => "Template : GitHub Releases (archive publiée requise)".into(),
+                    1 => trf!(
+                        "Local template: {}",
+                        "Template local : {}",
+                        self.new_draft.location
+                    ),
+                    2 => trf!(
+                        "Remote template: {}",
+                        "Template distant : {}",
+                        self.new_draft.location
+                    ),
+                    _ => tr!(
+                        "Template: GitHub Releases (published archive required)",
+                        "Template : GitHub Releases (archive publiée requise)"
+                    )
+                    .into(),
                 },
-                "Tu pourras ajouter tes ressources depuis l’atelier.".into(),
+                tr!(
+                    "You can add models from the workspace.",
+                    "Tu pourras ajouter tes ressources depuis l’atelier."
+                )
+                .into(),
             ],
             0,
         );
@@ -1283,7 +1698,7 @@ impl App {
         if draft.source == 2 {
             args.extend(["--template-url".into(), draft.location.clone().into()]);
         }
-        self.cli_job(args, "Création", Some(draft.output.clone()), true)
+        self.cli_job(args, JobKind::Create, Some(draft.output.clone()), true)
     }
     fn generate_resource(&mut self) -> Result<()> {
         let root = self.ready_for_job()?.as_os_str().to_owned();
@@ -1304,7 +1719,10 @@ impl App {
         } else {
             ensure!(
                 self.api.is_none(),
-                "Arrête l’API avant de modifier un modèle"
+                trf!(
+                    "Stop the API before editing a model",
+                    "Arrête l’API avant de modifier un modèle"
+                )
             );
         }
         for field in &self.add_draft.fields {
@@ -1314,9 +1732,9 @@ impl App {
         self.cli_job(
             args,
             if self.add_draft.editing {
-                "Modification du modèle"
+                JobKind::Edit
             } else {
-                "Ajout de ressource"
+                JobKind::Add
             },
             None,
             false,
@@ -1327,35 +1745,47 @@ impl App {
 
     pub(super) fn database_menu(&mut self) -> Result<()> {
         let target = database::target_label(self.ready_for_job()?)
-            .unwrap_or_else(|_| "Connexion à configurer".into());
+            .unwrap_or_else(|_| tr!("Connection needs setup", "Connexion à configurer").into());
         let mysql = self
             .project
             .as_ref()
             .is_some_and(|p| p.database() == Database::Mysql);
         self.choose(
             ChoiceKind::DbMenu,
-            "Base de données",
+            tr!("Database", "Base de données"),
             &[
-                "Tester la connexion",
-                "Appliquer les migrations",
-                "Initialiser la base et ses tables",
+                tr!("Test connection", "Tester la connexion"),
+                tr!("Apply migrations", "Appliquer les migrations"),
+                tr!(
+                    "Initialize the database and tables",
+                    "Initialiser la base et ses tables"
+                ),
                 if mysql {
-                    "Configurer la connexion MySQL"
+                    tr!(
+                        "Configure MySQL connection",
+                        "Configurer la connexion MySQL"
+                    )
                 } else {
-                    "Fermer"
+                    tr!("Close", "Fermer")
                 },
-                "Voir le schéma de la base",
-                "Mettre à jour les templates",
+                tr!("View database schema", "Voir le schéma de la base"),
+                tr!("Update templates", "Mettre à jour les templates"),
             ],
             vec![
                 if mysql {
-                    "MySQL • connexion à configurer avec un serveur accessible"
+                    tr!(
+                        "MySQL • configure a connection to an accessible server",
+                        "MySQL • connexion à configurer avec un serveur accessible"
+                    )
                 } else {
-                    "SQLite • fichier local, configuration automatique"
+                    tr!(
+                        "SQLite • local file, automatic setup",
+                        "SQLite • fichier local, configuration automatique"
+                    )
                 }
                 .into(),
                 target,
-                self.db_status.clone(),
+                self.db_status.label().into(),
             ],
             0,
         );
@@ -1365,7 +1795,10 @@ impl App {
     pub(super) fn start_database_setup(&mut self) -> Result<()> {
         ensure!(
             self.api.is_none(),
-            "Arrête l’API avant de modifier sa connexion"
+            trf!(
+                "Stop the API before changing its connection",
+                "Arrête l’API avant de modifier sa connexion"
+            )
         );
         let root = self.ready_for_job()?;
         if self
@@ -1378,7 +1811,7 @@ impl App {
         self.db_draft = database::MysqlSettings::load(root);
         self.input(
             InputKind::DbHost,
-            "Serveur MySQL",
+            tr!("MySQL server", "Serveur MySQL"),
             &self.db_draft.host.clone(),
         );
         Ok(())
@@ -1388,17 +1821,27 @@ impl App {
         let target = database::target_label(self.ready_for_job()?)?;
         self.choose(
             ChoiceKind::DbConfirm(action),
-            "Appliquer les changements SQL ?",
-            &["Confirmer", "Annuler"],
+            tr!("Apply SQL changes?", "Appliquer les changements SQL ?"),
+            &[tr!("Confirm", "Confirmer"), tr!("Cancel", "Annuler")],
             vec![
                 target,
                 if action == Action::Init {
-                    "La base sera créée si elle n’existe pas, puis les migrations appliquées."
+                    tr!(
+                        "The database will be created if missing, then migrations applied.",
+                        "La base sera créée si elle n’existe pas, puis les migrations appliquées."
+                    )
                 } else {
-                    "Les migrations SQL en attente seront appliquées à la base configurée."
+                    tr!(
+                        "Pending SQL migrations will be applied to the configured database.",
+                        "Les migrations SQL en attente seront appliquées à la base configurée."
+                    )
                 }
                 .into(),
-                "Les migrations déjà appliquées ne sont pas rejouées.".into(),
+                tr!(
+                    "Migrations already applied are not run again.",
+                    "Les migrations déjà appliquées ne sont pas rejouées."
+                )
+                .into(),
             ],
             0,
         );
@@ -1408,7 +1851,10 @@ impl App {
     pub(super) fn database_action(&mut self, action: Action) -> Result<()> {
         ensure!(
             action == Action::Check || self.api.is_none(),
-            "Arrête l’API avant d’appliquer les migrations"
+            trf!(
+                "Stop the API before applying migrations",
+                "Arrête l’API avant d’appliquer les migrations"
+            )
         );
         let root = self.ready_for_job()?.as_os_str().to_owned();
         let arg = match action {
@@ -1419,12 +1865,12 @@ impl App {
         };
         self.cli_job(
             vec!["db".into(), arg.into(), "--project".into(), root],
-            "Base de données",
+            JobKind::Database,
             None,
             false,
         )?;
         self.db_job = Some(action);
-        self.db_status = "Action en cours…".into();
+        self.db_status = status::DatabaseNotice::Working;
         Ok(())
     }
 }

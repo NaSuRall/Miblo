@@ -124,19 +124,25 @@ pub fn request_url(base: &str, path: &str) -> Result<Url> {
             && !path.starts_with("//")
             && !path.contains(['\\', '{', '}'])
             && !path.chars().any(char::is_control),
-        "Indique un chemin local comme /users/1 (remplace les paramètres)"
+        trf!(
+            "Enter a local path such as /users/1 (replace the parameters)",
+            "Indique un chemin local comme /users/1 (remplace les paramètres)"
+        )
     );
-    let base = Url::parse(base).context("Adresse de l’API invalide")?;
+    let base = Url::parse(base).context(tr!("Invalid API address", "Adresse de l’API invalide"))?;
     ensure!(
         matches!(base.scheme(), "http" | "https")
             && base.username().is_empty()
             && base.password().is_none(),
-        "Adresse HTTP de l’API invalide"
+        trf!("Invalid API HTTP address", "Adresse HTTP de l’API invalide")
     );
     let url = base.join(path)?;
     ensure!(
         url.origin() == base.origin() && url.fragment().is_none(),
-        "La requête doit cibler cette API, sans fragment"
+        trf!(
+            "The request must target this API, without a fragment",
+            "La requête doit cibler cette API, sans fragment"
+        )
     );
     Ok(url)
 }
@@ -146,14 +152,18 @@ pub fn validate(base: &str, request: &Request) -> Result<()> {
     ensure!(
         ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"]
             .contains(&request.method.as_str()),
-        "Méthode HTTP non prise en charge"
+        trf!(
+            "Unsupported HTTP method",
+            "Méthode HTTP non prise en charge"
+        )
     );
     ensure!(
         request.body.len() <= 64 * 1024,
-        "Corps JSON trop volumineux"
+        trf!("JSON body is too large", "Corps JSON trop volumineux")
     );
     if !request.body.trim().is_empty() {
-        serde_json::from_str::<serde_json::Value>(&request.body).context("Corps JSON invalide")?;
+        serde_json::from_str::<serde_json::Value>(&request.body)
+            .context(tr!("Invalid JSON body", "Corps JSON invalide"))?;
     }
     Ok(())
 }
@@ -203,9 +213,12 @@ pub(super) fn send_with_timeout(base: &str, request: Request, timeout: Duration)
         }
         let response = builder.send().map_err(|error| {
             anyhow::anyhow!(if error.is_timeout() {
-                "Délai HTTP dépassé (10 s)"
+                tr!("HTTP timeout (10 s)", "Délai HTTP dépassé (10 s)")
             } else {
-                "Connexion HTTP impossible ; vérifie l’adresse et le lancement de l’API"
+                tr!(
+                    "HTTP connection failed; check the address and start the API",
+                    "Connexion HTTP impossible ; vérifie l’adresse et le lancement de l’API"
+                )
             })
         })?;
         reply.status = Some(response.status().as_u16());
@@ -219,7 +232,10 @@ pub(super) fn send_with_timeout(base: &str, request: Request, timeout: Duration)
         response
             .take(MAX_RESPONSE + 1)
             .read_to_end(&mut bytes)
-            .context("Lecture de la réponse interrompue")?;
+            .context(tr!(
+                "Response reading interrupted",
+                "Lecture de la réponse interrompue"
+            ))?;
         reply.truncated = bytes.len() as u64 > MAX_RESPONSE;
         bytes.truncate(MAX_RESPONSE as usize);
         reply.body = if !reply.truncated {
@@ -263,7 +279,13 @@ impl Default for Tester {
 }
 impl Tester {
     pub fn start(&mut self, base: &str, request: Request) -> Result<()> {
-        ensure!(!self.pending, "Une requête HTTP est déjà en cours");
+        ensure!(
+            !self.pending,
+            trf!(
+                "An HTTP request is already running",
+                "Une requête HTTP est déjà en cours"
+            )
+        );
         validate(base, &request)?;
         self.pending = true;
         self.reply = None;
@@ -281,10 +303,12 @@ impl Tester {
             self.pending = false;
             self.lines = reply.body.lines().map(super::clean).collect();
             if reply.truncated {
-                self.lines.push("… réponse limitée à 64 Kio".into());
+                self.lines
+                    .push(tr!("… response limited to 64 KiB", "… réponse limitée à 64 Kio").into());
             }
             if self.lines.is_empty() {
-                self.lines.push("(réponse sans corps)".into());
+                self.lines
+                    .push(tr!("(empty response body)", "(réponse sans corps)").into());
             }
             self.reply = Some(reply);
             return true;

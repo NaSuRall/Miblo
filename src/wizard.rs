@@ -7,7 +7,7 @@ use std::io::{self, IsTerminal};
 pub struct Cancelled;
 impl std::fmt::Display for Cancelled {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Opération annulée")
+        write!(f, "{}", trf!("Operation cancelled", "Opération annulée"))
     }
 }
 impl std::error::Error for Cancelled {}
@@ -50,7 +50,11 @@ pub fn prompt_validated(
 }
 
 pub fn yes_no(label: &str, default: bool) -> Result<bool> {
-    match select(label, &["Oui", "Non"], usize::from(!default))? {
+    match select(
+        label,
+        &[tr!("Yes", "Oui"), tr!("No", "Non")],
+        usize::from(!default),
+    )? {
         Some(index) => Ok(index == 0),
         None => Err(Cancelled.into()),
     }
@@ -67,44 +71,95 @@ pub fn confirm(label: &str) -> Result<()> {
 pub fn resource(name: Option<String>) -> Result<Resource> {
     let name = match name {
         Some(name) => name,
-        None => prompt_validated("Nom de la ressource (ex. Product)", "Product", |name| {
-            Resource::new(name.into(), Vec::new()).validate_identity()
-        })?,
+        None => prompt_validated(
+            tr!(
+                "Model name (e.g. Product)",
+                "Nom de la ressource (ex. Product)"
+            ),
+            "Product",
+            |name| Resource::new(name.into(), Vec::new()).validate_identity(),
+        )?,
     };
     Resource::new(name.clone(), Vec::new()).validate_identity()?;
-    println!("Le champ id est créé automatiquement.");
+    println!(
+        "{}",
+        trf!(
+            "The id field is created automatically.",
+            "Le champ id est créé automatiquement."
+        )
+    );
     let mut fields = Vec::new();
     loop {
-        let field_name = prompt_validated("Nom du champ (ex. title)", "", |value| {
-            let mut candidate = fields.clone();
-            candidate.push(parse_field(&format!("{value}:string"))?);
-            Resource::new(name.clone(), candidate).validate()
-        })?;
+        let field_name = prompt_validated(
+            tr!("Field name (e.g. title)", "Nom du champ (ex. title)"),
+            "",
+            |value| {
+                let mut candidate = fields.clone();
+                candidate.push(parse_field(&format!("{value}:string"))?);
+                Resource::new(name.clone(), candidate).validate()
+            },
+        )?;
         let types = [
-            ("Texte court — jusqu’à 255 caractères", "string"),
-            ("Texte long", "text"),
-            ("Nombre entier", "int"),
-            ("Nombre décimal", "float"),
-            ("Oui / Non", "bool"),
+            (
+                tr!(
+                    "Short text — up to 255 characters",
+                    "Texte court — jusqu’à 255 caractères"
+                ),
+                "string",
+            ),
+            (tr!("Long text", "Texte long"), "text"),
+            (tr!("Integer", "Nombre entier"), "int"),
+            (tr!("Decimal number", "Nombre décimal"), "float"),
+            (tr!("Yes / No", "Oui / Non"), "bool"),
         ];
         let labels: Vec<_> = types.iter().map(|(label, _)| *label).collect();
-        let kind = select("Type du champ", &labels, 0)?.ok_or(Cancelled)?;
+        let kind = select(tr!("Field type", "Type du champ"), &labels, 0)?.ok_or(Cancelled)?;
         let mut field = parse_field(&format!("{field_name}:{}", types[kind].1))?;
         let force_private = field.private;
-        let mut options = vec![("Facultatif — autoriser une valeur nulle", "nullable")];
+        let mut options = vec![(
+            tr!(
+                "Optional — allow a null value",
+                "Facultatif — autoriser une valeur nulle"
+            ),
+            "nullable",
+        )];
         if field.kind != FieldType::Text {
-            options.push(("Unique — interdire les doublons", "unique"));
+            options.push((
+                tr!(
+                    "Unique — prevent duplicates",
+                    "Unique — interdire les doublons"
+                ),
+                "unique",
+            ));
         }
         if !force_private {
-            options.push(("Privé — masquer dans les réponses de l’API", "private"));
+            options.push((
+                tr!(
+                    "Private — hide in API responses",
+                    "Privé — masquer dans les réponses de l’API"
+                ),
+                "private",
+            ));
         }
         if force_private {
-            println!("Ce champ sensible sera automatiquement masqué dans les réponses.");
+            println!(
+                "{}",
+                trf!(
+                    "This sensitive field will be hidden in responses automatically.",
+                    "Ce champ sensible sera automatiquement masqué dans les réponses."
+                )
+            );
         }
         let labels: Vec<_> = options.iter().map(|(label, _)| *label).collect();
-        println!("↑ ↓ : déplacer • Espace : cocher • Entrée : valider • Échap : annuler");
+        println!(
+            "{}",
+            trf!(
+                "↑ ↓: move • Space: toggle • Enter: confirm • Escape: cancel",
+                "↑ ↓ : déplacer • Espace : cocher • Entrée : valider • Échap : annuler"
+            )
+        );
         let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-            .with_prompt("Options du champ")
+            .with_prompt(tr!("Field options", "Options du champ"))
             .items(&labels)
             .interact_opt()?
             .ok_or(Cancelled)?;
@@ -120,16 +175,27 @@ pub fn resource(name: Option<String>) -> Result<Resource> {
         candidate.push(field);
         Resource::new(name.clone(), candidate.clone()).validate()?;
         fields = candidate;
-        println!("Champ ajouté : {field_name} ({})", types[kind].0);
-        if !yes_no("Ajouter un autre champ ?", true)? {
+        println!(
+            "{}",
+            trf!(
+                "Field added: {field_name} ({})",
+                "Champ ajouté : {field_name} ({})",
+                types[kind].0
+            )
+        );
+        if !yes_no(tr!("Add another field?", "Ajouter un autre champ ?"), true)? {
             break;
         }
     }
     let mut resource = Resource::new(name, fields);
-    resource.path = prompt_validated("Adresse de la collection", &resource.path, |path| {
-        let mut candidate = resource.clone();
-        candidate.path = path.into();
-        candidate.validate()
-    })?;
+    resource.path = prompt_validated(
+        tr!("Collection path", "Adresse de la collection"),
+        &resource.path,
+        |path| {
+            let mut candidate = resource.clone();
+            candidate.path = path.into();
+            candidate.validate()
+        },
+    )?;
     Ok(resource)
 }

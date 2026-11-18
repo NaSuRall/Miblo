@@ -7,6 +7,43 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub enum ProjectState {
+    Closed,
+    Ready,
+    Issue(String),
+}
+impl ProjectState {
+    pub fn label(&self) -> String {
+        match self {
+            Self::Closed => tr!("No project open", "Aucun projet ouvert").into(),
+            Self::Ready => tr!("Configuration consistent", "Configuration cohérente").into(),
+            Self::Issue(error) => trf!("Check required: {error}", "À vérifier : {error}"),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum DatabaseNotice {
+    Unchecked,
+    Pending,
+    Connected,
+    Ready,
+    Failed,
+    Working,
+}
+impl DatabaseNotice {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unchecked => tr!("Not checked", "Non vérifiée"),
+            Self::Pending => tr!("Pending migrations", "Migrations en attente"),
+            Self::Connected => tr!("Connection verified", "Connexion vérifiée"),
+            Self::Ready => tr!("Migrations up to date", "Migrations à jour"),
+            Self::Failed => tr!("Failed · check logs", "Échec • consulter les logs"),
+            Self::Working => tr!("Action in progress…", "Action en cours…"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Tone {
     Good,
@@ -126,36 +163,55 @@ pub fn database_badge(health: &Health, busy: bool) -> Badge {
     if busy {
         return Badge::new(
             Tone::Warning,
-            "Action BDD en cours",
-            "Vérification après la fin de l’action",
+            tr!("Database action running", "Action BDD en cours"),
+            tr!(
+                "Checks resume when the action finishes",
+                "Vérification après la fin de l’action"
+            ),
         );
     }
     match health {
         Health::Unknown => Badge::new(
             Tone::Neutral,
-            "Vérification BDD…",
-            "Contrôle des migrations réellement appliquées",
+            tr!("Checking database…", "Vérification BDD…"),
+            tr!(
+                "Checking applied migrations",
+                "Contrôle des migrations réellement appliquées"
+            ),
         ),
         Health::Ready => Badge::new(
             Tone::Good,
-            "Migrations à jour",
-            "Base connectée · aucune mise à jour en attente",
+            tr!("Migrations up to date", "Migrations à jour"),
+            tr!(
+                "Database connected · no pending updates",
+                "Base connectée · aucune mise à jour en attente"
+            ),
         ),
         Health::Pending(count) => Badge::new(
             Tone::Warning,
-            "Mise à jour BDD requise",
-            format!("{count} migration(s) en attente · b pour appliquer"),
+            tr!("Database update required", "Mise à jour BDD requise"),
+            trf!(
+                "{count} pending migration(s) · b to apply",
+                "{count} migration(s) en attente · b pour appliquer"
+            ),
         ),
         Health::Initialize => Badge::new(
             Tone::Warning,
-            "Base à initialiser",
-            "b → Initialiser la base et ses tables",
+            tr!("Database needs initialization", "Base à initialiser"),
+            tr!(
+                "b → Initialize the database and tables",
+                "b → Initialiser la base et ses tables"
+            ),
         ),
         Health::Unavailable(error) => Badge::new(
             Tone::Error,
-            "Base inaccessible",
-            format!("{error} · b configurer"),
+            tr!("Database unavailable", "Base inaccessible"),
+            trf!("{error} · b to configure", "{error} · b configurer"),
         ),
-        Health::Drift(error) => Badge::new(Tone::Error, "Migration incohérente", error),
+        Health::Drift(error) => Badge::new(
+            Tone::Error,
+            tr!("Migration mismatch", "Migration incohérente"),
+            error,
+        ),
     }
 }

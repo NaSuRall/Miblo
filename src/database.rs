@@ -30,8 +30,14 @@ pub struct MysqlSettings {
 
 impl MysqlSettings {
     pub fn url(&self) -> Result<String> {
-        ensure!(!self.host.is_empty(), "Indique le serveur MySQL");
-        ensure!(self.port > 0, "Port MySQL invalide");
+        ensure!(
+            !self.host.is_empty(),
+            trf!("Enter the MySQL server", "Indique le serveur MySQL")
+        );
+        ensure!(
+            self.port > 0,
+            trf!("Invalid MySQL port", "Port MySQL invalide")
+        );
         ensure!(
             !self.database.is_empty()
                 && self.database.len() <= 64
@@ -39,19 +45,28 @@ impl MysqlSettings {
                     .database
                     .bytes()
                     .all(|c| c.is_ascii_alphanumeric() || c == b'_'),
-            "Le nom de base doit contenir lettres, chiffres ou underscores (64 maximum)"
+            trf!(
+                "The database name must contain letters, digits or underscores (maximum 64)",
+                "Le nom de base doit contenir lettres, chiffres ou underscores (64 maximum)"
+            )
         );
-        ensure!(!self.username.is_empty(), "Indique l’utilisateur MySQL");
+        ensure!(
+            !self.username.is_empty(),
+            trf!("Enter the MySQL user", "Indique l’utilisateur MySQL")
+        );
         ensure!(
             !self.username.chars().any(char::is_control)
                 && !self.password.chars().any(char::is_control),
-            "Les identifiants ne doivent pas contenir de caractères de contrôle"
+            trf!(
+                "Credentials must not contain control characters",
+                "Les identifiants ne doivent pas contenir de caractères de contrôle"
+            )
         );
         let mut url = reqwest::Url::parse("mysql://localhost")?;
         url.set_host(Some(&self.host))
-            .map_err(|_| anyhow::anyhow!("Serveur MySQL invalide"))?;
+            .map_err(|_| anyhow::anyhow!(trf!("Invalid MySQL server", "Serveur MySQL invalide")))?;
         url.set_port(Some(self.port))
-            .map_err(|_| anyhow::anyhow!("Port MySQL invalide"))?;
+            .map_err(|_| anyhow::anyhow!(trf!("Invalid MySQL port", "Port MySQL invalide")))?;
         url.set_path(&self.database);
         url.set_query(self.options.as_deref());
         let encode = |value: &str| {
@@ -59,9 +74,9 @@ impl MysqlSettings {
                 .to_string()
         };
         url.set_username(&encode(&self.username))
-            .map_err(|_| anyhow::anyhow!("Utilisateur invalide"))?;
+            .map_err(|_| anyhow::anyhow!(trf!("Invalid user", "Utilisateur invalide")))?;
         url.set_password(Some(&encode(&self.password)))
-            .map_err(|_| anyhow::anyhow!("Mot de passe invalide"))?;
+            .map_err(|_| anyhow::anyhow!(trf!("Invalid password", "Mot de passe invalide")))?;
         Ok(url.into())
     }
 
@@ -106,11 +121,15 @@ fn env_text(root: &Path) -> Result<Option<String>> {
         Ok(info) => {
             ensure!(
                 info.file_type().is_file() && info.len() <= 1024 * 1024,
-                ".env doit être un fichier normal de moins de 1 Mio"
+                trf!(
+                    ".env must be a regular file smaller than 1 MiB",
+                    ".env doit être un fichier normal de moins de 1 Mio"
+                )
             );
-            Ok(Some(
-                fs::read_to_string(path).context("Impossible de lire .env")?,
-            ))
+            Ok(Some(fs::read_to_string(path).context(tr!(
+                "Cannot read .env",
+                "Impossible de lire .env"
+            ))?))
         }
     }
 }
@@ -120,7 +139,10 @@ pub fn connection_url(root: &Path) -> Result<String> {
     if let Some(text) = env_text(root)? {
         for item in dotenvy::from_read_iter(text.as_bytes()) {
             let (key, value) = item.map_err(|_| {
-                anyhow::anyhow!("Fichier .env invalide ; corrige sa syntaxe avant de continuer")
+                anyhow::anyhow!(trf!(
+                    "Invalid .env file; fix its syntax before continuing",
+                    "Fichier .env invalide ; corrige sa syntaxe avant de continuer"
+                ))
             })?;
             if key == "DATABASE_URL" {
                 return validate_url(project.database(), value);
@@ -133,13 +155,17 @@ pub fn connection_url(root: &Path) -> Result<String> {
     if project.database() == Database::Sqlite {
         return Ok("sqlite://miblo.sqlite?mode=rwc".into());
     }
-    bail!("MySQL n’est pas configuré : ouvre Base de données avec b pour saisir la connexion")
+    bail!(trf!(
+        "MySQL is not configured: press b to enter the database connection",
+        "MySQL n’est pas configuré : ouvre Base de données avec b pour saisir la connexion"
+    ))
 }
 
 pub fn env_value(root: &Path, name: &str) -> Result<Option<String>> {
     if let Some(text) = env_text(root)? {
         for item in dotenvy::from_read_iter(text.as_bytes()) {
-            let (key, value) = item.map_err(|_| anyhow::anyhow!("Fichier .env invalide"))?;
+            let (key, value) = item
+                .map_err(|_| anyhow::anyhow!(trf!("Invalid .env file", "Fichier .env invalide")))?;
             if key == name {
                 return Ok(Some(value));
             }
@@ -151,7 +177,10 @@ pub fn env_value(root: &Path, name: &str) -> Result<Option<String>> {
 fn validate_url(database: Database, url: String) -> Result<String> {
     ensure!(
         url.starts_with(&format!("{}:", database.arg())),
-        "DATABASE_URL ne correspond pas au moteur du projet"
+        trf!(
+            "DATABASE_URL does not match the project's database engine",
+            "DATABASE_URL ne correspond pas au moteur du projet"
+        )
     );
     Ok(url)
 }
@@ -162,12 +191,12 @@ pub fn target_label(root: &Path) -> Result<String> {
     match project.database() {
         Database::Sqlite => {
             let options = sqlx::sqlite::SqliteConnectOptions::from_str(&url)
-                .map_err(|_| anyhow::anyhow!("URL SQLite invalide"))?;
+                .map_err(|_| anyhow::anyhow!(trf!("Invalid SQLite URL", "URL SQLite invalide")))?;
             Ok(format!("SQLite : {}", options.get_filename().display()))
         }
         Database::Mysql => {
             let options = sqlx::mysql::MySqlConnectOptions::from_str(&url)
-                .map_err(|_| anyhow::anyhow!("URL MySQL invalide"))?;
+                .map_err(|_| anyhow::anyhow!(trf!("Invalid MySQL URL", "URL MySQL invalide")))?;
             Ok(format!(
                 "MySQL : {}:{} / {}",
                 options.get_host(),
@@ -182,7 +211,7 @@ pub fn save_mysql(root: &Path, settings: &MysqlSettings) -> Result<()> {
     let project = Project::load(&root.join("miblo.yaml"))?;
     ensure!(
         project.database() == Database::Mysql,
-        "Ce projet utilise SQLite"
+        trf!("This project uses SQLite", "Ce projet utilise SQLite")
     );
     let url = settings.url()?;
     let text = env_text(root)?
@@ -190,7 +219,12 @@ pub fn save_mysql(root: &Path, settings: &MysqlSettings) -> Result<()> {
     // Validate first, then preserve unrelated entries and comments. Single quotes
     // prevent dotenv interpolation; URL credentials are percent-encoded.
     for item in dotenvy::from_read_iter(text.as_bytes()) {
-        item.map_err(|_| anyhow::anyhow!("Fichier .env invalide ; aucune modification effectuée"))?;
+        item.map_err(|_| {
+            anyhow::anyhow!(trf!(
+                "Invalid .env file; no changes made",
+                "Fichier .env invalide ; aucune modification effectuée"
+            ))
+        })?;
     }
     let replacement = format!("DATABASE_URL='{url}'\n");
     let mut other = String::new();
@@ -217,7 +251,10 @@ pub fn save_mysql(root: &Path, settings: &MysqlSettings) -> Result<()> {
     }
     ensure!(
         record.is_empty(),
-        "Fichier .env invalide ; aucune modification effectuée"
+        trf!(
+            "Invalid .env file; no changes made",
+            "Fichier .env invalide ; aucune modification effectuée"
+        )
     );
     if !replaced {
         if !other.is_empty() && !other.ends_with('\n') {
@@ -252,27 +289,27 @@ pub fn run(root: &Path, action: Action) -> Result<()> {
             match project.database() {
                 Database::Sqlite => {
                     let mut options = sqlx::sqlite::SqliteConnectOptions::from_str(&url)
-                        .map_err(|_| anyhow::anyhow!("URL SQLite invalide"))?;
+                        .map_err(|_| anyhow::anyhow!(trf!("Invalid SQLite URL", "URL SQLite invalide")))?;
                     let filename = options.get_filename().to_path_buf();
-                    ensure!(filename != Path::new(":memory:"), "Utilise un fichier SQLite persistant pour gérer les migrations");
+                    ensure!(filename != Path::new(":memory:"), trf!("Use a persistent SQLite file to manage migrations", "Utilise un fichier SQLite persistant pour gérer les migrations"));
                     let filename = if filename.is_absolute() { filename } else { root.join(filename) };
-                    ensure!(!filename.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()), "Le fichier SQLite ne doit pas être un lien symbolique");
+                    ensure!(!filename.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()), trf!("The SQLite file must not be a symbolic link", "Le fichier SQLite ne doit pas être un lien symbolique"));
                     options = options.filename(filename).create_if_missing(action != Action::Check)
                         .foreign_keys(true).busy_timeout(Duration::from_secs(10)).disable_statement_logging();
                     let mut connection = sqlx::SqliteConnection::connect_with(&options).await
-                        .map_err(|_| anyhow::anyhow!("Connexion SQLite impossible ; initialise la base avec b → Initialiser"))?;
+                        .map_err(|_| anyhow::anyhow!(trf!("Cannot connect to SQLite; initialize it with b → Initialize", "Connexion SQLite impossible ; initialise la base avec b → Initialiser")))?;
                     if action == Action::Check { connection.execute("SELECT 1").await?; }
                     else { Migrator::new(root.join("migrations")).await?.run(&mut connection).await?; }
                     connection.close().await?;
                 }
                 Database::Mysql => {
                     let options = sqlx::mysql::MySqlConnectOptions::from_str(&url)
-                        .map_err(|_| anyhow::anyhow!("URL MySQL invalide"))?.disable_statement_logging();
-                    if action == Action::Init && !MySql::database_exists(&url).await.map_err(|_| anyhow::anyhow!("Impossible de joindre MySQL ; vérifie le serveur et les identifiants"))? {
-                        MySql::create_database(&url).await.map_err(|_| anyhow::anyhow!("Création de la base refusée ; vérifie les droits de l’utilisateur MySQL"))?;
+                        .map_err(|_| anyhow::anyhow!(trf!("Invalid MySQL URL", "URL MySQL invalide")))?.disable_statement_logging();
+                    if action == Action::Init && !MySql::database_exists(&url).await.map_err(|_| anyhow::anyhow!(trf!("Cannot reach MySQL; check the server and credentials", "Impossible de joindre MySQL ; vérifie le serveur et les identifiants")))? {
+                        MySql::create_database(&url).await.map_err(|_| anyhow::anyhow!(trf!("Database creation denied; check the MySQL user's permissions", "Création de la base refusée ; vérifie les droits de l’utilisateur MySQL")))?;
                     }
                     let mut connection = sqlx::MySqlConnection::connect_with(&options).await
-                        .map_err(|_| anyhow::anyhow!("Connexion MySQL impossible ; vérifie le serveur, la base et les identifiants avec b"))?;
+                        .map_err(|_| anyhow::anyhow!(trf!("Cannot connect to MySQL; check the server, database and credentials with b", "Connexion MySQL impossible ; vérifie le serveur, la base et les identifiants avec b")))?;
                     if action == Action::Check { connection.execute("SELECT 1").await?; }
                     else { Migrator::new(root.join("migrations")).await?.run(&mut connection).await?; }
                     connection.close().await?;
@@ -281,16 +318,19 @@ pub fn run(root: &Path, action: Action) -> Result<()> {
             Ok::<(), anyhow::Error>(())
         };
         tokio::time::timeout(Duration::from_secs(30), task).await
-            .context("La base n’a pas répondu dans le délai de 30 secondes")??;
+            .context(tr!("The database did not respond within 30 seconds", "La base n’a pas répondu dans le délai de 30 secondes"))??;
         Ok::<(), anyhow::Error>(())
     })?;
     println!(
         "{} : {}",
         project.database().name(),
         if action == Action::Check {
-            "connexion vérifiée"
+            tr!("connection verified", "connexion vérifiée")
         } else {
-            "base prête, migrations appliquées"
+            tr!(
+                "database ready, migrations applied",
+                "base prête, migrations appliquées"
+            )
         }
     );
     Ok(())

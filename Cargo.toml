@@ -1,15 +1,15 @@
 [package]
 name = "miblo"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2024"
 rust-version = "1.88"
-description = "Terminal workspace for Rust APIs with SQLite or MySQL and remote templates"
+description = "Interactive CLI and terminal UI to generate Rust REST APIs with Axum, SQLx, SQLite and MySQL"
 license = "MIT"
 repository = "https://github.com/NaSuRall/Miblo"
 homepage = "https://cli.miblo.fr"
 documentation = "https://cli.miblo.fr/en/docs/"
 readme = "README.md"
-keywords = ["axum", "sqlx", "codegen", "api", "generator"]
+keywords = ["cli", "tui", "api", "codegen", "axum"]
 categories = ["command-line-utilities", "development-tools"]
 include = ["src/**", "tests/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHANGELOG.md"]
 

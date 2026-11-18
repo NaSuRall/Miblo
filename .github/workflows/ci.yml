@@ -110,5 +110,9 @@ jobs:
         run: python -u scripts/smoke_sqlite.py --miblo target/debug/miblo --templates template-packs/rust_sqlite_template_v4 --legacy-templates template-packs/rust_sqlite_template_v1 --target-dir target/generated
       - name: MySQL 8.4 in a disposable container
         run: python -u scripts/smoke_mysql.py --miblo target/debug/miblo --templates template-packs/rust_template_v4 --docker --target-dir target/generated
-      - name: Real terminal flow, generated API and HTTP forms
-        run: python -u scripts/smoke_tui.py --miblo target/debug/miblo --templates template-packs/rust_sqlite_template_v4 --database sqlite --api-target-dir target/generated
+      - name: Language selection, persistence and preference errors
+        run: python -u scripts/smoke_language.py --miblo target/debug/miblo
+      - name: English terminal flow, generated API and HTTP forms
+        run: python -u scripts/smoke_tui.py --miblo target/debug/miblo --templates template-packs/rust_sqlite_template_v4 --database sqlite --api-target-dir target/generated --language en
+      - name: French terminal flow, generated API and HTTP forms
+        run: python -u scripts/smoke_tui.py --miblo target/debug/miblo --templates template-packs/rust_sqlite_template_v4 --database sqlite --api-target-dir target/generated --language fr

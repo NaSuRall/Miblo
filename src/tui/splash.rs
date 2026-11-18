@@ -76,7 +76,7 @@ fn draw(frame: &mut Frame, count: usize) {
     let subtitle_y = logo.y.saturating_add(height + 2);
     if subtitle_y < area.bottom() {
         frame.render_widget(
-            Paragraph::new("Votre API prend forme.")
+            Paragraph::new(tr!("Your API takes shape.", "Votre API prend forme."))
                 .centered()
                 .style(Style::default().fg(Color::Rgb(140, 165, 200))),
             Rect::new(area.x, subtitle_y, area.width, 1),
@@ -84,7 +84,7 @@ fn draw(frame: &mut Frame, count: usize) {
     }
     if area.height > 12 {
         frame.render_widget(
-            Paragraph::new("Une touche pour passer")
+            Paragraph::new(tr!("Press any key to skip", "Une touche pour passer"))
                 .centered()
                 .style(Style::default().fg(Color::DarkGray)),
             Rect::new(area.x, area.bottom() - 2, area.width, 1),

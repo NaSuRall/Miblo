@@ -25,7 +25,7 @@ impl Process {
         }
         let mut child = command
             .spawn()
-            .with_context(|| format!("Impossible de lancer {label}"))?;
+            .with_context(|| trf!("Cannot start {label}", "Impossible de lancer {label}"))?;
         if let Some(stdout) = child.stdout.take() {
             stream(stdout, sender.clone(), label.into());
         }

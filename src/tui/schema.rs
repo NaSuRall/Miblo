@@ -93,13 +93,21 @@ impl Browser {
     pub fn details(&self) -> Vec<String> {
         let Some(table) = self.tables().get(self.selected) else {
             return vec![
-                "Aucune table à afficher.".into(),
-                "b : initialiser / migrer · p : schéma déclaré".into(),
+                tr!("No tables to display.", "Aucune table à afficher.").into(),
+                tr!(
+                    "b: initialize / migrate · p: declared schema",
+                    "b : initialiser / migrer · p : schéma déclaré"
+                )
+                .into(),
             ];
         };
         let mut lines = vec![
             format!("TABLE {}", table.name),
-            "PK : clé primaire · FK : clé étrangère".into(),
+            tr!(
+                "PK: primary key · FK: foreign key",
+                "PK : clé primaire · FK : clé étrangère"
+            )
+            .into(),
             String::new(),
         ];
         for column in &table.columns {
@@ -118,15 +126,18 @@ impl Browser {
                 column.name,
                 column.sql_type,
                 if column.nullable {
-                    " · NULL autorisé"
+                    tr!(" · NULL allowed", " · NULL autorisé")
                 } else {
                     " · NOT NULL"
                 }
             ));
         }
-        lines.extend([String::new(), "RELATIONS SORTANTES".into()]);
+        lines.extend([
+            String::new(),
+            tr!("OUTGOING RELATIONSHIPS", "RELATIONS SORTANTES").into(),
+        ]);
         if table.foreign_keys.is_empty() {
-            lines.push("Aucune clé étrangère".into());
+            lines.push(tr!("No foreign keys", "Aucune clé étrangère").into());
         }
         for key in &table.foreign_keys {
             lines.push(format!(
@@ -135,12 +146,14 @@ impl Browser {
                 key.target,
                 key.target_columns.join(", ")
             ));
-            lines.push(format!(
+            lines.push(trf!(
+                "  On delete: {} · on update: {}",
                 "  Suppression : {} · modification : {}",
-                key.on_delete, key.on_update
+                key.on_delete,
+                key.on_update
             ));
         }
-        lines.extend([String::new(), "RÉFÉRENCÉE PAR".into()]);
+        lines.extend([String::new(), tr!("REFERENCED BY", "RÉFÉRENCÉE PAR").into()]);
         let start = lines.len();
         for source in self.tables() {
             for key in &source.foreign_keys {
@@ -156,7 +169,7 @@ impl Browser {
             }
         }
         if start == lines.len() {
-            lines.push("Aucune autre table".into());
+            lines.push(tr!("No other tables", "Aucune autre table").into());
         }
         lines
     }

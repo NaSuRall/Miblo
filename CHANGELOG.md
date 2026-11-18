@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.1 — 2026-11-18
+
+- Interface en anglais par défaut, avec sélection English / Français par
+  `Maj+L`, la palette d’actions ou `:language` / `:langue`.
+- Choix de langue appliqué immédiatement et conservé entre les lancements dans
+  les préférences utilisateur, sans modifier les projets ni arrêter l’API.
+- Traduction des menus, formulaires, aides, états API/BDD et assistants CLI.
+- Tests terminal dans les deux langues : création, modèles, routes, requêtes
+  HTTP, changement pendant l’exécution de l’API et erreurs de préférences.
+- README repensé pour crates.io, guide détaillé séparé et métadonnées de la
+  crate actualisées : description, mots-clés CLI/TUI/API et aide de la commande.
+
 ## 0.9.0 — bêta publique, 2026-11-18
 
 - Nom public de la crate : `miblo`, exécutable `miblo`.
@@ -26,6 +38,3 @@
 - Reprise du formulaire après une erreur de template ; source GitHub proposée
   par défaut pour les nouveaux projets.
 - Templates externes 0.6.0 pour SQLite et MySQL.
-
-Le dépôt et une Release de templates ne constituent pas une publication de la
-crate. La bêta crates.io sera annoncée après validation de son paquet exact.

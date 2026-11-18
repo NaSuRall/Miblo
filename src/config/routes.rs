@@ -40,11 +40,11 @@ impl RouteAction {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::List => "Lister les lignes",
-            Self::Get => "Consulter une ligne par id",
-            Self::Create => "Créer une ligne",
-            Self::Update => "Modifier une ligne par id",
-            Self::Delete => "Supprimer une ligne par id",
+            Self::List => tr!("List rows", "Lister les lignes"),
+            Self::Get => tr!("Get a row by id", "Consulter une ligne par id"),
+            Self::Create => tr!("Create a row", "Créer une ligne"),
+            Self::Update => tr!("Update a row by id", "Modifier une ligne par id"),
+            Self::Delete => tr!("Delete a row by id", "Supprimer une ligne par id"),
         }
     }
     pub fn method(self) -> &'static str {
@@ -108,16 +108,25 @@ impl CustomRoute {
         if let Some(action) = self.action {
             ensure!(
                 self.resource.is_some(),
-                "Choisis un modèle pour cette action CRUD (--resource)"
+                trf!(
+                    "Choose a model for this CRUD action (--resource)",
+                    "Choisis un modèle pour cette action CRUD (--resource)"
+                )
             );
             ensure!(
                 self.method == action.method(),
-                "Cette action utilise la méthode {}",
-                action.method()
+                trf!(
+                    "This action uses the {} method",
+                    "Cette action utilise la méthode {}",
+                    action.method()
+                )
             );
             ensure!(
                 self.json_body == action.json_body(),
-                "Le corps JSON doit correspondre à l’action CRUD"
+                trf!(
+                    "The JSON body must match the CRUD action",
+                    "Le corps JSON doit correspondre à l’action CRUD"
+                )
             );
             let expected = if action.needs_id() {
                 vec!["id"]
@@ -129,9 +138,15 @@ impl CustomRoute {
                 "{} : {}",
                 action.label(),
                 if action.needs_id() {
-                    "le chemin doit contenir un unique paramètre {id} (ex. /users/detail/{id})"
+                    tr!(
+                        "the path must contain exactly one {id} parameter (e.g. /users/detail/{id})",
+                        "le chemin doit contenir un unique paramètre {id} (ex. /users/detail/{id})"
+                    )
                 } else {
-                    "le chemin ne doit pas contenir de paramètre"
+                    tr!(
+                        "the path must not contain parameters",
+                        "le chemin ne doit pas contenir de paramètre"
+                    )
                 }
             );
         }
