@@ -1,11 +1,13 @@
 [package]
-name = "miblo_cli_v2"
+name = "miblo"
 version = "0.9.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Terminal workspace for Rust APIs with SQLite or MySQL and remote templates"
 license = "MIT"
 repository = "https://github.com/NaSuRall/Miblo"
+homepage = "https://cli.miblo.fr"
+documentation = "https://cli.miblo.fr/en/docs/"
 readme = "README.md"
 keywords = ["axum", "sqlx", "codegen", "api", "generator"]
 categories = ["command-line-utilities", "development-tools"]

@@ -7,10 +7,10 @@ Miblo fournit le socle (structure, modèles, routes et base de données). Les r�
 métier, l’authentification, les permissions et le déploiement de l’API appartiennent
 au développeur qui reprend le projet généré.
 
-Présentation complète et scénario de démonstration :
-[brief vidéo Miblo](docs/MIBLO_BRIEF_VIDEO.md) (français).
+Website and documentation: [cli.miblo.fr](https://cli.miblo.fr/).
+Project overview: [video brief](https://github.com/NaSuRall/Miblo/blob/main/docs/MIBLO_BRIEF_VIDEO.md) (French).
 
-This development version is **0.9.0**. It supports template formats **1, 2 and 3**, with new projects using format **3** and
+This public beta is **0.9.0**. It supports template formats **1, 2 and 3**, with new projects using format **3** and
 `rust-axum-mysql` or `rust-axum-sqlite`, both version **0.6.0**. Neither publishing a crate nor publishing a GitHub
 Release is performed by the build or packaging scripts.
 
@@ -34,7 +34,7 @@ cargo install --path . --locked
 miblo --help
 ```
 
-L’exécutable s’appelle `miblo` ; le paquet Cargo s’appelle `miblo_cli_v2`.
+L’exécutable et le paquet Cargo s’appellent `miblo`.
 Si la commande est introuvable après installation, ouvrez un nouveau terminal
 et vérifiez que le dossier `bin` de Cargo est dans le `PATH` (généralement
 `~/.cargo/bin`, ou `%USERPROFILE%\.cargo\bin` sous Windows).
@@ -44,10 +44,10 @@ MySQL accessible. `sqlx-cli`, Python et Docker ne sont pas nécessaires à l’u
 de Miblo. Les templates sont téléchargés au premier usage, puis réutilisables avec
 le cache ; ils restent externes au binaire.
 
-Once this version is published, installation will be:
+Installation from crates.io (available after the first publication):
 
 ```sh
-cargo install miblo_cli_v2 --version 0.9.0 --locked
+cargo install miblo --version 0.9.0 --locked
 ```
 
 La publication sur crates.io est distincte du push GitHub. Les commandes ci-dessus
@@ -565,7 +565,7 @@ python3 scripts/check_install.py --target-dir target/beta-check --allow-dirty
 The CI retains the tested `.crate` as an artifact for 14 days. Before publishing a
 beta, all jobs must pass on the exact commit, the version and changelog must be
 finalized, and `cargo publish --dry-run --locked` must pass. Then publish that version
-explicitly and verify `cargo install miblo_cli_v2 --version <version> --locked`
+explicitly and verify `cargo install miblo --version <version> --locked`
 from the registry. No workflow performs publication automatically.
 
 The CLI tests cover download/cache behavior, HTTP responses and confirmation,
@@ -710,3 +710,21 @@ Pour un projet existant, utilisez **u → GitHub Releases** ou `miblo template u
 avant la première création de route. Le pack **0.6.0** propose aussi les actions CRUD automatiques ; les modèles
 existants gardent leurs templates d’origine et leur code personnalisé. Les templates
 restent téléchargés et mis en cache, sans être intégrés au binaire.
+
+## Prebuilt binaries
+
+GitHub Releases distribute archives for Windows x64 (`miblo.exe`), Linux x64
+(glibc 2.35 or later), and macOS Apple Silicon and Intel. Extract the archive
+and add its directory to your PATH. Run `miblo --version`, then `miblo`.
+Check the archive against the accompanying `.sha256` file.
+
+Rust 1.88+, Cargo, rustfmt and the native build tools above are still required
+to generate, build and run Rust APIs. Templates are downloaded separately.
+These first beta binaries are not signed or notarized. Cargo installation
+remains available if you prefer building from source.
+
+Maintainers: `Release binaries` tests the crate and produces archives as workflow
+artifacts without publishing. Publish a GitHub prerelease with the four tested
+archives and their checksums only after all target jobs pass. The Cargo package
+is published separately with `cargo publish --locked`, after a successful
+`cargo publish --locked --dry-run`. Never upload a registry token to this repository.

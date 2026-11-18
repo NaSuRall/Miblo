@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased — préparation de la bêta
+## 0.9.0 — bêta publique, 2026-11-18
 
+- Nom public de la crate : `miblo`, exécutable `miblo`.
+- Archives Windows, Linux et macOS avec sommes SHA-256.
 - Tests du CLI et de l’installation sur Linux, macOS et Windows ; vérification
   de Rust 1.88, version minimale prise en charge.
 - Tests des API générées SQLite/MySQL, de l’interface terminal et de la
